@@ -91,3 +91,150 @@ body {
   color: #2a2338;
   background: #fff6e6;
 }
+
+[hidden] {
+  display: none !important;
+}
+
+.orders {
+  position: fixed;
+  top: 60px;
+  left: 50%;
+  display: flex;
+  gap: 8px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.order {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 2px 8px;
+  min-width: 132px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  color: #2a2338;
+  background: #fff6e6;
+  box-shadow: 0 3px 0 rgb(0 0 0 / 0.3);
+}
+
+.order-icon {
+  font-size: 20px;
+}
+
+.order-name {
+  font-size: 13px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.order-time {
+  grid-column: 1 / -1;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: rgb(42 35 56 / 0.15);
+}
+
+.order-time i {
+  display: block;
+  height: 100%;
+  transform-origin: left;
+  background: #5fd38a;
+}
+
+.order.urgent .order-time i {
+  background: #ef6b5a;
+}
+
+.stat {
+  position: fixed;
+  bottom: 16px;
+  display: grid;
+  min-width: 84px;
+  padding: 8px 14px;
+  border-radius: 14px;
+  color: #fff6e6;
+  background: rgb(0 0 0 / 0.4);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.stat small {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+.stat b {
+  font-size: 26px;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.stat-score {
+  left: 16px;
+}
+
+.stat-timer {
+  right: 16px;
+  text-align: right;
+}
+
+#timer.urgent {
+  color: #ff8a7a;
+}
+
+.gameover {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 6px;
+  text-align: center;
+  color: #fff6e6;
+  background: rgb(26 20 36 / 0.78);
+  pointer-events: none;
+}
+
+.gameover h2 {
+  margin: 0;
+  font-size: 44px;
+  font-weight: 900;
+}
+
+.gameover p {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.gameover-hint {
+  margin-top: 14px !important;
+  opacity: 0.8;
+}
+
+.gameover kbd {
+  padding: 2px 8px;
+  border-radius: 6px;
+  font: inherit;
+  color: #2a2338;
+  background: #fff6e6;
+}
+
+@media (max-width: 700px) {
+  .hint {
+    display: none;
+  }
+
+  .order-name {
+    display: none;
+  }
+
+  .order {
+    min-width: 56px;
+  }
+}

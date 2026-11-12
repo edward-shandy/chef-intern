@@ -1,9 +1,9 @@
-export type TileKind = "floor" | "counter" | "crate" | "trash";
-export type ItemKind = "tomato" | "lettuce";
+export type TileKind = "floor" | "counter" | "crate" | "trash" | "board" | "stove" | "plates" | "serve";
+export type Ingredient = "tomato" | "lettuce";
 
 export interface Tile {
   kind: TileKind;
-  dispenses?: ItemKind;
+  dispenses?: Ingredient;
 }
 
 export interface Level {
@@ -21,6 +21,10 @@ const LEGEND: Record<string, Tile> = {
   T: { kind: "crate", dispenses: "tomato" },
   L: { kind: "crate", dispenses: "lettuce" },
   X: { kind: "trash" },
+  B: { kind: "board" },
+  O: { kind: "stove" },
+  P: { kind: "plates" },
+  W: { kind: "serve" },
 };
 
 export function parseLevel(rows: string[]): Level {
@@ -44,14 +48,18 @@ export function tileAt(level: Level, tx: number, tz: number): Tile | null {
   return level.tiles[tz * level.width + tx];
 }
 
+// Only these tiles can have an item resting on them.
+export const holdsItems = (tile: Tile): boolean =>
+  tile.kind === "counter" || tile.kind === "board" || tile.kind === "stove";
+
 export const KITCHEN_01 = parseLevel([
-  "####T###L####",
+  "##T#L###P####",
   "#S.........S#",
-  "#...........#",
-  "#...........#",
-  "#...#####...#",
+  "B...........O",
+  "#...........O",
+  "B...#####...#",
   "#...........#",
   "#...........#",
   "#S.........S#",
-  "######X######",
+  "###X##WW#####",
 ]);

@@ -1,10 +1,48 @@
-import { tileAt, type ItemKind, type Level } from "./level";
+import { holdsItems, tileAt, type Ingredient, type Level } from "./level";
 
 export const SIM_STEP = 1 / 60;
 export const PLAYER_RADIUS = 0.34;
+export const POT_CAPACITY = 3;
+// Pot cook progress: 1 means cooked, BURN_AT means ruined.
+export const BURN_AT = 1.75;
+
 const PLAYER_SPEED = 4.6;
 const PLAYER_ACCEL = 16;
 const REACH = 0.75;
+const CHOP_SECONDS = 1.2;
+const COOK_SECONDS = 8;
+const ROUND_SECONDS = 180;
+const ORDER_SECONDS = 60;
+const ORDER_INTERVAL = 15;
+const MAX_ORDERS = 4;
+const EXPIRED_PENALTY = 10;
+const MAX_TIP = 10;
+const RESTART_DELAY = 3;
+
+export type DishPart = Ingredient | "soup";
+
+export type Item =
+  // chop runs 0..1; an ingredient counts as chopped at 1.
+  | { type: "ingredient"; kind: Ingredient; chop: number }
+  | { type: "plate"; contents: DishPart[] }
+  // contents counts chopped tomatoes in the pot.
+  | { type: "pot"; contents: number; cook: number };
+
+export const RECIPES = {
+  lettuce_salad: { label: "Lettuce salad", parts: ["lettuce"], points: 20 },
+  salad: { label: "Garden salad", parts: ["lettuce", "tomato"], points: 30 },
+  soup: { label: "Tomato soup", parts: ["soup"], points: 40 },
+} satisfies Record<string, { label: string; parts: DishPart[]; points: number }>;
+
+export type RecipeId = keyof typeof RECIPES;
+const RECIPE_IDS = Object.keys(RECIPES) as RecipeId[];
+
+export interface Order {
+  id: number;
+  recipe: RecipeId;
+  timeLeft: number;
+  timeTotal: number;
+}
 
 export interface PlayerState {
   id: number;
@@ -14,29 +52,80 @@ export interface PlayerState {
   vz: number;
   // Radians around Y; 0 faces +Z (towards the camera).
   facing: number;
-  held: ItemKind | null;
+  held: Item | null;
+  // True while this chef is actively chopping, so clients can animate it.
+  chopping: boolean;
 }
 
 export interface GameState {
   players: PlayerState[];
   // Items resting on solid tiles, keyed by tile index.
-  counterItems: Record<number, ItemKind>;
+  tileItems: Record<number, Item>;
+  orders: Order[];
+  score: number;
+  delivered: number;
+  timeLeft: number;
+  phase: "playing" | "over";
+  overFor: number;
+  nextOrderIn: number;
+  nextOrderId: number;
+  seed: number;
 }
 
 export interface PlayerInput {
   moveX: number;
   moveZ: number;
+  // Held down to chop.
+  use: boolean;
   // True only on the step where the interact button was pressed.
   interact: boolean;
 }
 
-export function createGame(level: Level, playerCount: number): GameState {
-  const players: PlayerState[] = [];
-  for (let id = 0; id < playerCount; id++) {
-    const spawn = level.spawns[id % level.spawns.length];
-    players.push({ id, x: spawn.x, z: spawn.z, vx: 0, vz: 0, facing: 0, held: null });
+export const IDLE_INPUT: PlayerInput = { moveX: 0, moveZ: 0, use: false, interact: false };
+
+export const isChopped = (item: Item): boolean => item.type === "ingredient" && item.chop >= 1;
+export const potIsCooked = (cook: number): boolean => cook >= 1 && cook < BURN_AT;
+
+// Every stove starts each round with an empty pot on it.
+function startingItems(level: Level): Record<number, Item> {
+  const items: Record<number, Item> = {};
+  level.tiles.forEach((tile, index) => {
+    if (tile.kind === "stove") items[index] = { type: "pot", contents: 0, cook: 0 };
+  });
+  return items;
+}
+
+export function createGame(level: Level, seed: number): GameState {
+  return {
+    players: [],
+    tileItems: startingItems(level),
+    orders: [],
+    score: 0,
+    delivered: 0,
+    timeLeft: ROUND_SECONDS,
+    phase: "playing",
+    overFor: 0,
+    nextOrderIn: 1.5,
+    nextOrderId: 1,
+    seed: seed >>> 0,
+  };
+}
+
+// Player ids double as seat numbers, so they pick the spawn point and shirt colour.
+export function freePlayerSlot(state: GameState, maxPlayers: number): number | null {
+  for (let id = 0; id < maxPlayers; id++) {
+    if (!state.players.some((player) => player.id === id)) return id;
   }
-  return { players, counterItems: {} };
+  return null;
+}
+
+export function addPlayer(level: Level, state: GameState, id: number): void {
+  const spawn = level.spawns[id % level.spawns.length];
+  state.players.push({ id, x: spawn.x, z: spawn.z, vx: 0, vz: 0, facing: 0, held: null, chopping: false });
+}
+
+export function removePlayer(state: GameState, id: number): void {
+  state.players = state.players.filter((player) => player.id !== id);
 }
 
 // Index of the solid tile the player is facing and close enough to use, if any.
@@ -47,25 +136,147 @@ export function targetTile(level: Level, player: PlayerState): number | null {
   return tile && tile.kind !== "floor" ? tz * level.width + tx : null;
 }
 
+// Seeded generator so the simulation stays reproducible from its state alone.
+function nextRandom(state: GameState): number {
+  state.seed = (Math.imul(state.seed, 1664525) + 1013904223) >>> 0;
+  return state.seed / 4294967296;
+}
+
+function addToPlate(plate: Extract<Item, { type: "plate" }>, part: DishPart): boolean {
+  const { contents } = plate;
+  if (contents.includes("soup") || contents.includes(part)) return false;
+  if (part === "soup" && contents.length > 0) return false;
+  contents.push(part);
+  contents.sort();
+  return true;
+}
+
+function addToPot(pot: Extract<Item, { type: "pot" }>, item: Item): boolean {
+  if (item.type !== "ingredient" || item.kind !== "tomato" || !isChopped(item)) return false;
+  if (pot.contents >= POT_CAPACITY) return false;
+  pot.contents += 1;
+  return true;
+}
+
+function pour(pot: Extract<Item, { type: "pot" }>, plate: Extract<Item, { type: "plate" }>): boolean {
+  if (pot.contents < POT_CAPACITY || !potIsCooked(pot.cook)) return false;
+  if (!addToPlate(plate, "soup")) return false;
+  pot.contents = 0;
+  pot.cook = 0;
+  return true;
+}
+
+// Tries to merge the held item with the resting one and reports which of them was used up.
+function combine(held: Item, resting: Item): "held" | "resting" | "both-stay" | null {
+  if (held.type === "ingredient") {
+    if (resting.type === "plate" && isChopped(held) && addToPlate(resting, held.kind)) return "held";
+    if (resting.type === "pot" && addToPot(resting, held)) return "held";
+  } else if (held.type === "plate") {
+    if (resting.type === "ingredient" && isChopped(resting) && addToPlate(held, resting.kind)) return "resting";
+    if (resting.type === "pot" && pour(resting, held)) return "both-stay";
+  } else {
+    if (resting.type === "ingredient" && addToPot(held, resting)) return "resting";
+    if (resting.type === "plate" && pour(held, resting)) return "both-stay";
+  }
+  return null;
+}
+
+function serve(state: GameState, plate: Extract<Item, { type: "plate" }>): void {
+  const dish = plate.contents.join("+");
+  const index = state.orders.findIndex((order) => [...RECIPES[order.recipe].parts].sort().join("+") === dish);
+  if (index === -1) return;
+  const [order] = state.orders.splice(index, 1);
+  state.score += RECIPES[order.recipe].points + Math.ceil((order.timeLeft / order.timeTotal) * MAX_TIP);
+  state.delivered += 1;
+}
+
 function interact(level: Level, state: GameState, player: PlayerState): void {
   const index = targetTile(level, player);
   if (index === null) return;
   const tile = level.tiles[index];
-  const resting = state.counterItems[index];
+  const resting = state.tileItems[index];
+  const held = player.held;
 
-  if (player.held) {
-    if (tile.kind === "trash") {
-      player.held = null;
-    } else if (tile.kind === "counter" && !resting) {
-      state.counterItems[index] = player.held;
+  if (!held) {
+    if (resting) {
+      player.held = resting;
+      delete state.tileItems[index];
+    } else if (tile.kind === "crate" && tile.dispenses) {
+      player.held = { type: "ingredient", kind: tile.dispenses, chop: 0 };
+    } else if (tile.kind === "plates") {
+      player.held = { type: "plate", contents: [] };
+    }
+    return;
+  }
+
+  if (tile.kind === "trash") {
+    // Pots and plates are kept and only emptied; loose food is thrown away.
+    if (held.type === "pot") {
+      held.contents = 0;
+      held.cook = 0;
+    } else if (held.type === "plate") {
+      held.contents = [];
+    } else {
       player.held = null;
     }
+  } else if (tile.kind === "serve") {
+    if (held.type === "plate" && held.contents.length > 0) {
+      serve(state, held);
+      player.held = null;
+    }
+  } else if (tile.kind === "plates") {
+    // Chopped food can go straight onto a fresh plate from the stack.
+    if (held.type === "ingredient" && isChopped(held)) player.held = { type: "plate", contents: [held.kind] };
   } else if (resting) {
-    player.held = resting;
-    delete state.counterItems[index];
-  } else if (tile.kind === "crate" && tile.dispenses) {
-    player.held = tile.dispenses;
+    const used = combine(held, resting);
+    if (used === "held") player.held = null;
+    if (used === "resting") delete state.tileItems[index];
+  } else if (holdsItems(tile)) {
+    state.tileItems[index] = held;
+    player.held = null;
   }
+}
+
+function chop(level: Level, state: GameState, player: PlayerState, dt: number): void {
+  if (player.held) return;
+  const index = targetTile(level, player);
+  if (index === null || level.tiles[index].kind !== "board") return;
+  const item = state.tileItems[index];
+  if (item?.type === "ingredient" && item.chop < 1) {
+    item.chop = Math.min(1, item.chop + dt / CHOP_SECONDS);
+    player.chopping = true;
+  }
+}
+
+function cookPots(level: Level, state: GameState, dt: number): void {
+  for (const [key, item] of Object.entries(state.tileItems)) {
+    if (item.type !== "pot" || item.contents < POT_CAPACITY) continue;
+    if (level.tiles[Number(key)].kind !== "stove") continue;
+    item.cook = Math.min(BURN_AT, item.cook + dt / COOK_SECONDS);
+  }
+}
+
+function updateOrders(state: GameState, dt: number): void {
+  for (const order of state.orders) order.timeLeft -= dt;
+  const expired = state.orders.filter((order) => order.timeLeft <= 0).length;
+  if (expired > 0) {
+    state.orders = state.orders.filter((order) => order.timeLeft > 0);
+    state.score = Math.max(0, state.score - expired * EXPIRED_PENALTY);
+  }
+
+  // An empty ticket rail is boring, so the next order never waits long.
+  if (state.orders.length === 0) state.nextOrderIn = Math.min(state.nextOrderIn, 3);
+  state.nextOrderIn -= dt;
+  if (state.nextOrderIn > 0 || state.orders.length >= MAX_ORDERS) return;
+  const recipe = RECIPE_IDS[Math.floor(nextRandom(state) * RECIPE_IDS.length)];
+  state.orders.push({ id: state.nextOrderId++, recipe, timeLeft: ORDER_SECONDS, timeTotal: ORDER_SECONDS });
+  state.nextOrderIn = ORDER_INTERVAL;
+}
+
+function restartRound(level: Level, state: GameState): void {
+  const players = state.players;
+  Object.assign(state, createGame(level, state.seed));
+  for (const { id } of players) addPlayer(level, state, id);
 }
 
 // Pushes the player's circle out of every solid tile it overlaps.
@@ -87,13 +298,36 @@ function resolveCollisions(level: Level, player: PlayerState): void {
   }
 }
 
-// Advances the whole game by dt seconds; inputs are indexed like state.players.
-export function stepGame(level: Level, state: GameState, inputs: PlayerInput[], dt: number): void {
-  state.players.forEach((player, i) => {
-    const input = inputs[i];
-    if (!input) return;
+// Splits overlapping chefs evenly so nobody can walk through a teammate.
+function separatePlayers(players: PlayerState[]): void {
+  for (let i = 0; i < players.length; i++) {
+    for (let j = i + 1; j < players.length; j++) {
+      const a = players[i];
+      const b = players[j];
+      const dx = b.x - a.x;
+      const dz = b.z - a.z;
+      const distance = Math.hypot(dx, dz);
+      if (distance >= PLAYER_RADIUS * 2 || distance < 1e-6) continue;
+      const push = (PLAYER_RADIUS * 2 - distance) / 2 / distance;
+      a.x -= dx * push;
+      a.z -= dz * push;
+      b.x += dx * push;
+      b.z += dz * push;
+    }
+  }
+}
 
-    let { moveX, moveZ } = input;
+// Advances the whole game by dt seconds; inputs are keyed by player id.
+export function stepGame(level: Level, state: GameState, inputs: Record<number, PlayerInput>, dt: number): void {
+  if (state.phase === "over") {
+    state.overFor += dt;
+    const wantsRestart = state.players.some((player) => inputs[player.id]?.interact);
+    if (state.overFor >= RESTART_DELAY && wantsRestart) restartRound(level, state);
+    return;
+  }
+
+  for (const player of state.players) {
+    let { moveX, moveZ } = inputs[player.id] ?? IDLE_INPUT;
     const length = Math.hypot(moveX, moveZ);
     if (length > 1) {
       moveX /= length;
@@ -106,10 +340,27 @@ export function stepGame(level: Level, state: GameState, inputs: PlayerInput[], 
     player.vz += (moveZ * PLAYER_SPEED - player.vz) * blend;
     player.x += player.vx * dt;
     player.z += player.vz * dt;
-    resolveCollisions(level, player);
+  }
 
+  separatePlayers(state.players);
+  for (const player of state.players) {
+    resolveCollisions(level, player);
+    const input = inputs[player.id] ?? IDLE_INPUT;
+    player.chopping = false;
     if (input.interact) interact(level, state, player);
-  });
+    if (input.use) chop(level, state, player, dt);
+  }
+
+  cookPots(level, state, dt);
+  updateOrders(state, dt);
+
+  state.timeLeft -= dt;
+  if (state.timeLeft <= 0) {
+    state.timeLeft = 0;
+    state.phase = "over";
+    state.overFor = 0;
+    for (const player of state.players) player.vx = player.vz = 0;
+  }
 }
 
 export const playerSpeedFraction = (player: PlayerState): number =>

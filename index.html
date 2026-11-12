@@ -14,7 +14,20 @@
       <h1>Chef Intern</h1>
       <span id="status" data-state="connecting">Connecting…</span>
     </header>
-    <p class="hint"><kbd>WASD</kbd> move <span>·</span> <kbd>E</kbd> or <kbd>Space</kbd> pick up / put down</p>
+    <div class="play-hud" hidden>
+      <section class="orders" id="orders" aria-label="Orders"></section>
+      <div class="stat stat-score"><small>Score</small><b id="score">0</b></div>
+      <div class="stat stat-timer"><small>Time</small><b id="timer">3:00</b></div>
+    </div>
+    <section id="gameover" class="gameover" hidden>
+      <h2>Time's up!</h2>
+      <p id="final-score"></p>
+      <p class="gameover-hint">Press <kbd>E</kbd> or click to play again</p>
+    </section>
+    <p class="hint">
+      <kbd>WASD</kbd> move <span>·</span> <kbd>E</kbd> pick up / put down <span>·</span> hold <kbd>F</kbd> to chop
+      <span>·</span> or just <kbd>click</kbd> a tile
+    </p>
     <script type="module" src="/src/client/main.ts"></script>
   </body>
 </html>

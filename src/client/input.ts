@@ -1,10 +1,12 @@
 import type { PlayerInput } from "../shared/sim";
 
 const INTERACT_KEYS = new Set(["KeyE", "Space"]);
+const USE_KEYS = ["KeyF", "ShiftLeft"];
 const HANDLED_KEYS = new Set([
   "KeyW", "KeyA", "KeyS", "KeyD",
   "ArrowUp", "ArrowLeft", "ArrowDown", "ArrowRight",
   ...INTERACT_KEYS,
+  ...USE_KEYS,
 ]);
 
 // Tracks held keys and hands the simulation one input sample per step.
@@ -32,6 +34,7 @@ export function createKeyboard(): { sample(): PlayerInput } {
       return {
         moveX: axis(["KeyA", "ArrowLeft"], ["KeyD", "ArrowRight"]),
         moveZ: axis(["KeyW", "ArrowUp"], ["KeyS", "ArrowDown"]),
+        use: USE_KEYS.some((code) => down.has(code)),
         interact,
       };
     },
