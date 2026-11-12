@@ -20,6 +20,10 @@ npm run dev
 
 Open http://localhost:5173. `npm run dev` starts Vite (5173) and `wrangler dev` (8787) together; Vite proxies `/ws/*` to the Worker. Join a specific room with `?room=CODE` (letters and digits, max 16).
 
+**Controls:** `WASD` or arrow keys to move, `E` or `Space` to pick up and put down. Crates give ingredients, the bin deletes what you hold.
+
+**How the code is split:** `src/shared/sim.ts` is the whole game rule set as pure functions over plain data, with levels as text maps in `src/shared/level.ts`. The client only samples input and draws the state, so the same simulation can run inside the Durable Object once the server becomes authoritative.
+
 Other scripts: `npm run typecheck`, `npm run build`, `npm run deploy` (build + `wrangler deploy`, needs `npx wrangler login` once).
 
 ## Gotchas
@@ -32,7 +36,7 @@ Other scripts: `npm run typecheck`, `npm run build`, `npm run deploy` (build + `
 ## Roadmap
 
 1. ~~Setup: scaffold, starter scene, room presence over WebSocket~~
-2. Greybox kitchen: movement, collision, pick up / put down
+2. ~~Greybox kitchen: movement, collision, pick up / put down~~
 3. Basic multiplayer: players see each other move and pass items
 4. Cooking loop: chop, cook, plate, serve, orders, timer, score
 5. Netcode polish: prediction, interpolation, reconnect
