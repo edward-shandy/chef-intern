@@ -1,0 +1,64 @@
+:root {
+  color-scheme: dark;
+  font-family: "Nunito", system-ui, sans-serif;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #2a2338;
+}
+
+#game {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+}
+
+.hud {
+  position: fixed;
+  inset: 16px 16px auto 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.hud h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  color: #fff6e6;
+  text-shadow: 0 2px 0 rgb(0 0 0 / 0.35);
+}
+
+#status {
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff6e6;
+  background: rgb(0 0 0 / 0.4);
+  font-variant-numeric: tabular-nums;
+}
+
+#status::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: #f2b84b;
+}
+
+#status[data-state="online"]::before {
+  background: #5fd38a;
+}
+
+#status[data-state="offline"]::before {
+  background: #ef6b5a;
+}
