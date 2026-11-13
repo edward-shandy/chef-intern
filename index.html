@@ -13,7 +13,12 @@
     <div class="vignette"></div>
     <header class="hud">
       <h1>Chef Intern</h1>
-      <span id="status" data-state="connecting">Connecting…</span>
+      <div class="hud-right">
+        <button id="leave" class="pill-button" type="button">Leave</button>
+        <button id="music" class="pill-button" type="button">Music on</button>
+        <button id="mute" class="pill-button" type="button">Sound on</button>
+        <span id="status" data-state="connecting">Connecting…</span>
+      </div>
     </header>
     <div class="play-hud" hidden>
       <section class="orders" id="orders" aria-label="Orders"></section>
@@ -24,6 +29,27 @@
       </div>
       <div class="stat stat-timer"><small>Time left</small><b id="timer">3:00</b></div>
     </div>
+    <section id="waiting" class="lobby" hidden>
+      <div class="lobby-card">
+        <p class="lobby-kicker">Kitchen code</p>
+        <h2 id="room-code" class="lobby-code"></h2>
+        <ul id="lobby-chefs" class="lobby-chefs"></ul>
+        <button id="start" class="button button-primary" type="button">Start service <kbd>Enter</kbd></button>
+        <button id="invite" class="button" type="button">Copy invite link</button>
+        <button id="leave-lobby" class="button button-quiet" type="button">Back to the front door</button>
+      </div>
+    </section>
+    <section id="lobby" class="lobby" hidden>
+      <div class="lobby-card">
+        <h2>Chef Intern</h2>
+        <p>Cook together online. Up to 4 chefs per kitchen.</p>
+        <button id="create" class="button button-primary" type="button">Create a kitchen</button>
+        <form id="join" class="lobby-join">
+          <input id="join-code" maxlength="16" placeholder="Room code" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Room code" />
+          <button class="button" type="submit">Join</button>
+        </form>
+      </div>
+    </section>
     <section id="gameover" class="gameover" hidden>
       <div class="gameover-card">
         <p class="gameover-kicker" id="result-kicker"></p>

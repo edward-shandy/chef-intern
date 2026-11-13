@@ -20,4 +20,5 @@ export type ServerMessage =
 export type ClientMessage =
   | { type: "input"; seq: number; moveX: number; moveZ: number; use: boolean; aim: number | null; dash: boolean }
   | { type: "interact"; aim: number | null }
+  | { type: "start" }
   | { type: "ping"; t: number };

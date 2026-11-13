@@ -18,13 +18,13 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5173. `npm run dev` starts Vite (5173) and `wrangler dev` (8787) together; Vite proxies `/ws/*` to the Worker. Join a specific room with `?room=CODE` (letters and digits, max 16).
+Open http://localhost:5173. Without `?room=` in the URL you get the front door: create a kitchen (a random 4-character code) or join one by code. `npm run dev` starts Vite (5173) and `wrangler dev` (8787) together; Vite proxies `/ws/*` to the Worker. Join a specific room with `?room=CODE` (letters and digits, max 16).
 
 **Controls:** `WASD` or arrow keys to move (the mouse never moves the chef), `Shift` to dash: a short burst straight ahead with a 0.8 s cooldown. `E`, `Space` or a left click uses a station: pick up, put down, combine. Hold `F` or the right mouse button to chop.
 
 **Which station gets used:** by default the one the chef is facing, shown by the orange frame and arrow. Pointing the mouse at any station whose nearest edge is within 0.8 tiles of the chef moves that orange marker to it, so from one spot you can reach the counter in front and its neighbours on either side; the chef turns to face whatever it uses. A station under the mouse that is out of reach gets cyan corner brackets instead. Pressing a movement key hands targeting back to the facing direction until the mouse moves again, so a mouse left resting on a counter never hijacks keyboard play.
 
-**How a round works:** a round lasts 3 minutes and starts when the first chef joins. Orders appear on the ticket rail and cost 10 points if they expire. Serve a matching plate at the green window for the recipe's points plus up to 10 for speed. Each kitchen has a target score, shown next to the score with a bar that fills towards it. When time is up the round is won if the score reached the target: `E` or a click (after a 3 second pause) then moves on to the next kitchen, and after the last one starts over from the first. A lost round replays the same kitchen.
+**How a round works:** a new room opens on its lobby screen, which covers the kitchen: it shows the room code, who has taken which of the four seats, a button to copy the invite link, and a way back to the front door. Anyone in the room starts the service with the button or `Enter`; a round then lasts 3 minutes. Joining a room whose round is already running drops you straight into the kitchen. The `Leave` button in the header returns to the front door at any time. Orders appear on the ticket rail and cost 10 points if they expire. Serve a matching plate at the green window for the recipe's points plus up to 10 for speed. Each kitchen has a target score, shown next to the score with a bar that fills towards it. When time is up the round is won if the score reached the target: `E` or a click (after a 3 second pause) then moves on to the next kitchen, and after the last one starts over from the first. A lost round replays the same kitchen.
 
 Targets are written for one chef (`target` in `src/shared/level.ts`: 60 for Open Kitchen, 80 for The Pass) and multiplied by `TARGET_SCALE` in `sim.ts` for bigger crews (x1.8, x2.6, x3.3 for 2, 3, 4 chefs). The multiplier follows the largest crew seen during the round, so it never drops when someone leaves.
 
@@ -60,6 +60,12 @@ Map letters: `.` floor, `S` spawn, `#` counter, `T` `L` `N` tomato, lettuce and 
 
 **Visuals:** counters, stoves, pots, plates, crates, the chopping board, the dish rack, all food and the back wall are models from **KayKit Restaurant Bits 1.0** by Kay Lousberg (CC0, https://github.com/KayKit-Game-Assets/KayKit-Restaurant-Bits-1.0). Only the 19 models the game uses are copied into `public/models`, next to the pack's `LICENSE.txt`; they share one small palette texture and one material. `src/client/assets.ts` loads them once before the kitchen is built, and `src/client/models.ts` places them. The four chefs are the Knight, Barbarian, Mage and Rogue from **KayKit Adventurers 1.0** (CC0, https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0), one per seat, wearing a code-built toque; `src/client/chef.ts` loads them and mixes their animations (idle, run, a carry pose on the arms only, and a chop). Sinks, fridges and pot plants are original props generated for this project: the 14 source files are in `public/gpt-models`, and the game loads repacked copies from `public/props` (see the gotcha below). They are fixtures inside the kitchen, not loose decoration: a sink or fridge takes the place of one cabinet in a counter run, and a plant sits on a counter. Each kitchen picks its own set in `decor` (one sink, one fridge, a couple of plants), only those are downloaded, and a prop that fails to load falls back to a plain counter. Neither pack has a bin, so the trash chute, the serving pad, flames, steam, planters, lamps and the floor are still built in code. `src/client/scene.ts` owns the renderer, lights and per-frame syncing. The HUD is plain DOM in `index.html` + `style.css`.
 
+**Music:** "Party and Gameover loop" by gilzoide (CC0, https://opengameart.org/content/party-and-gameover-loop), in `public/audio` with a `CREDITS.txt`. The cheerful theme loops at the front door, in the lobby and during a round; after a lost round it cross-fades to the sad theme. `Music on` in the header toggles it separately from sound effects.
+
+**Sound:** `src/client/sound.ts` synthesises every effect with Web Audio (pick up, put down, chopping, dash, new order, delivery, expired order, soup ready, burnt, round start, win and lose), so there are no audio files. It works by comparing each snapshot with the previous one. The "Sound on" button in the header mutes it and the choice is remembered in `localStorage`.
+
+**Phones and tablets:** on a touch device (or with `?touch=1` on a desktop) `src/client/touch.ts` adds a thumb stick that appears wherever the left thumb lands, plus Use, Chop and Dash buttons; tapping a station in reach also uses it. The score and timer move to the top so thumbs do not cover them. Phones render at a lower pixel ratio with a smaller shadow map.
+
 **Inspecting models up close:** add `?zoom=3` to the URL to move the camera three times closer to the middle of the kitchen.
 
 **Testing lag locally:** add `?lag=300` to the URL to delay every message so the round trip takes 300 ms.
@@ -82,6 +88,8 @@ Other scripts: `npm run typecheck`, `npm run build`, `npm run deploy` (build + `
 - **Bone names lose their dots** — the pack names bones `upperarm.l`, but three.js strips the dot on load, so code looks them up as `upperarml`, `handslotr` and so on.
 - **The generated props needed repacking** — the GLBs in `public/gpt-models` interleave positions and normals using a second buffer view that starts 12 bytes into the first, which three.js rejects with "Invalid typed array length". `python scripts/repack_glb.py <source.glb> public/props/<name>.glb` gives every accessor its own packed view without changing the mesh. Re-run it for any new prop from the same generator.
 - **Aiming reach is 0.8 tiles from the chef's centre** — standing in the middle of a tile only reaches the counter straight ahead; press against the counter to reach its neighbours.
+- **Music is OGG Vorbis** — fine in Chrome, Firefox, Edge and recent Safari, but older iPhones cannot play it and will simply have no music; add an `.mp3` or `.m4a` copy if that matters.
+- **Audio needs a key press or tap first** — browsers block sound until the user interacts, so the audio context is created on the first `keydown` or `pointerdown`; anything that happens before that is silent.
 - **Adding a model** — copy its `.gltf` and `.bin` from the pack into `public/models` and add the name to `MODEL_NAMES` in `assets.ts`; a name missing from the folder makes the whole kitchen fail to load with "Could not load the kitchen".
 - **All kitchens must be 13x9** — the camera and shadow frustum are framed once for that size, and `setLevel` in `scene.ts` only swaps the kitchen contents.
 - **Dash is predicted like movement** — the dash press travels inside the input message and `dashTime` / `dashCooldown` are part of `PlayerState`, so the client replays it exactly instead of rubber-banding.
@@ -96,4 +104,4 @@ Other scripts: `npm run typecheck`, `npm run build`, `npm run deploy` (build + `
 5. ~~Netcode polish: prediction, interpolation, reconnect~~
 6. ~~Visual pass: models, lighting, animation, HUD~~
 7. ~~Content: second kitchen, onion soup, dash, crew-scaled pacing~~ (hazards not done)
-8. Finishing: audio, lobby and results screens, performance, touch controls
+8. ~~Finishing: sound effects, front door and waiting room, touch controls, phone render settings~~

@@ -70,7 +70,9 @@ export interface KitchenView {
 export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level): KitchenView {
   let level = initialLevel;
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  // Phones get a lower resolution and a smaller shadow map, which is where most of their frame time goes.
+  const lowPower = matchMedia("(pointer: coarse)").matches;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, lowPower ? 1.5 : 2));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -96,7 +98,7 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
   const key = new THREE.DirectionalLight(0xfff0d8, 2.9);
   key.position.set(-5, 13, 7);
   key.castShadow = true;
-  key.shadow.mapSize.set(2048, 2048);
+  key.shadow.mapSize.set(lowPower ? 1024 : 2048, lowPower ? 1024 : 2048);
   key.shadow.camera.left = -level.width / 2 - 2.5;
   key.shadow.camera.right = level.width / 2 + 2.5;
   key.shadow.camera.top = level.height / 2 + 3;

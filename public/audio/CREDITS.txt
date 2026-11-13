@@ -1,0 +1,6 @@
+Music: "Party and Gameover loop" by gilzoide
+https://opengameart.org/content/party-and-gameover-loop
+License: CC0 1.0 Universal (public domain), https://creativecommons.org/publicdomain/zero/1.0/
+
+happy_theme.ogg  plays in the lobby and during a round
+sad_theme.ogg    plays after a lost round

@@ -81,7 +81,8 @@ export interface GameState {
   won: boolean;
   delivered: number;
   timeLeft: number;
-  phase: "playing" | "over";
+  // "waiting" is the warm-up before the first round: chefs can move and practise, but no orders or clock.
+  phase: "waiting" | "playing" | "over";
   overFor: number;
   nextOrderIn: number;
   nextOrderId: number;
@@ -115,7 +116,7 @@ function startingItems(level: Level): Record<number, Item> {
   return items;
 }
 
-export function createGame(level: number, seed: number): GameState {
+export function createGame(level: number, seed: number, waiting = false): GameState {
   return {
     level,
     players: [],
@@ -127,7 +128,7 @@ export function createGame(level: number, seed: number): GameState {
     won: false,
     delivered: 0,
     timeLeft: ROUND_SECONDS,
-    phase: "playing",
+    phase: waiting ? "waiting" : "playing",
     overFor: 0,
     nextOrderIn: 2,
     nextOrderId: 1,
@@ -334,6 +335,11 @@ function updateOrders(level: Level, state: GameState, dt: number): void {
   state.nextOrderIn = ORDER_INTERVAL[crew];
 }
 
+// Ends the warm-up; anyone in the room may call it once everybody has arrived.
+export function startRound(state: GameState): void {
+  if (state.phase === "waiting") state.phase = "playing";
+}
+
 // Starts a fresh round: the next kitchen after a win, the same one again after a loss.
 function restartRound(state: GameState): void {
   const players = state.players;
@@ -461,6 +467,7 @@ export function stepGame(state: GameState, inputs: Record<number, PlayerInput>, 
   }
 
   cookPots(level, state, dt);
+  if (state.phase === "waiting") return;
   updateOrders(level, state, dt);
 
   state.timeLeft -= dt;

@@ -19,10 +19,18 @@ const RECIPE_ICONS: Record<RecipeId, IconName[]> = {
   onion_soup: ["onion", "onion", "onion", "arrow", "soup"],
 };
 
+// The four seats, in the order players fill them: each has its own character and ring colour.
+const SEATS = [
+  { name: "Knight", colour: "#e4573d" },
+  { name: "Barbarian", colour: "#3d8fe4" },
+  { name: "Mage", colour: "#4fb86a" },
+  { name: "Rogue", colour: "#e4b03d" },
+];
+
 const element = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
 
 // Keeps the DOM overlay in step with server snapshots, touching it only when values change.
-export function createHud(): { update(state: GameState | null): void } {
+export function createHud(): { update(state: GameState | null, localId: number | null): void } {
   const root = element(".play-hud");
   const orders = element("#orders");
   const score = element("#score");
@@ -37,6 +45,9 @@ export function createHud(): { update(state: GameState | null): void } {
   const resultKicker = element("#result-kicker");
   const resultTitle = element("#result-title");
   const resultNext = element("#result-next");
+  const waiting = element("#waiting");
+  const lobbyChefs = element("#lobby-chefs");
+  let lobbyKey = "";
   const cards = new Map<number, HTMLElement>();
   let shownScore: number | null = null;
 
@@ -49,9 +60,12 @@ export function createHud(): { update(state: GameState | null): void } {
   };
 
   return {
-    update(state) {
+    update(state, localId) {
       root.hidden = state === null;
       gameOver.hidden = state?.phase !== "over";
+      waiting.hidden = state?.phase !== "waiting";
+      // The room lobby covers the kitchen until someone starts the service.
+      document.body.classList.toggle("in-lobby", state?.phase === "waiting");
       if (!state) return;
 
       if (state.score !== shownScore) {
@@ -64,6 +78,23 @@ export function createHud(): { update(state: GameState | null): void } {
         }
         shownScore = state.score;
         score.textContent = String(state.score);
+      }
+      // One row per seat, rebuilt only when someone joins or leaves.
+      const seats = state.players.map((player) => player.id).sort();
+      const key = `${seats.join(",")}:${localId}`;
+      if (key !== lobbyKey) {
+        lobbyKey = key;
+        lobbyChefs.replaceChildren(
+          ...SEATS.map((seat, id) => {
+            const row = document.createElement("li");
+            const taken = seats.includes(id);
+            row.className = taken ? "" : "empty";
+            row.style.setProperty("--seat", taken ? seat.colour : "transparent");
+            row.textContent = taken ? seat.name : "Waiting for a chef…";
+            if (id === localId) row.append(Object.assign(document.createElement("small"), { textContent: "You" }));
+            return row;
+          }),
+        );
       }
       const seconds = Math.ceil(state.timeLeft);
       timer.textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;

@@ -13,6 +13,7 @@ import {
   freePlayerSlot,
   IDLE_INPUT,
   removePlayer,
+  startRound,
   SIM_STEP,
   stepGame,
   type PlayerInput,
@@ -54,7 +55,7 @@ const tileOrNull = (value: unknown): number | null =>
 
 // One instance per room code; it runs the authoritative game for that room.
 export class Room extends DurableObject<Env> {
-  private game = createGame(0, Date.now());
+  private game = createGame(0, Date.now(), true);
   private seats = new Map<number, Seat>();
   private inputs: Record<number, PlayerInput> = {};
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -132,6 +133,8 @@ export class Room extends DurableObject<Env> {
     } else if (message.type === "interact") {
       seat.input.interact = true;
       seat.input.aim = tileOrNull(message.aim);
+    } else if (message.type === "start") {
+      startRound(this.game);
     } else if (message.type === "ping" && typeof message.t === "number") {
       this.send(socket, { type: "pong", t: message.t });
     }
@@ -195,7 +198,7 @@ export class Room extends DurableObject<Env> {
     if (this.seats.size === 0) {
       clearInterval(this.timer!);
       this.timer = null;
-      this.game = createGame(0, now);
+      this.game = createGame(0, now, true);
       return;
     }
 
