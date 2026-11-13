@@ -1,6 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
 import { MAX_PLAYERS, ROOM_CODE_PATTERN } from "../shared/constants";
-import { KITCHEN_01 } from "../shared/level";
 import {
   CLOSE_REPLACED,
   CLOSE_ROOM_FULL,
@@ -51,12 +50,11 @@ const clampAxis = (value: unknown): number =>
   typeof value === "number" && Number.isFinite(value) ? Math.max(-1, Math.min(1, value)) : 0;
 const round = (value: number): number => Math.round(value * 1000) / 1000;
 const tileOrNull = (value: unknown): number | null =>
-  typeof value === "number" && Number.isInteger(value) && value >= 0 && value < KITCHEN_01.tiles.length ? value : null;
+  typeof value === "number" && Number.isInteger(value) && value >= 0 && value < 4096 ? value : null;
 
 // One instance per room code; it runs the authoritative game for that room.
 export class Room extends DurableObject<Env> {
-  private readonly level = KITCHEN_01;
-  private game = createGame(this.level, Date.now());
+  private game = createGame(0, Date.now());
   private seats = new Map<number, Seat>();
   private inputs: Record<number, PlayerInput> = {};
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -126,6 +124,8 @@ export class Room extends DurableObject<Env> {
       seat.input.moveX = clampAxis(message.moveX);
       seat.input.moveZ = clampAxis(message.moveZ);
       seat.input.use = message.use === true;
+      // A dash press must survive until the next step, even if another input message lands first.
+      seat.input.dash ||= message.dash === true;
       seat.input.aim = tileOrNull(message.aim);
       seat.seq = Number.isSafeInteger(message.seq) ? message.seq : seat.seq;
       seat.steps = 0;
@@ -167,7 +167,7 @@ export class Room extends DurableObject<Env> {
     const seat: Seat = { cid, conn, goneAt: null, input: { ...IDLE_INPUT }, seq: 0, steps: 0 };
     this.seats.set(id, seat);
     this.inputs[id] = seat.input;
-    addPlayer(this.level, this.game, id);
+    addPlayer(this.game, id);
     if (this.timer === null) {
       this.lastTick = Date.now();
       this.pending = 0;
@@ -195,16 +195,17 @@ export class Room extends DurableObject<Env> {
     if (this.seats.size === 0) {
       clearInterval(this.timer!);
       this.timer = null;
-      this.game = createGame(this.level, now);
+      this.game = createGame(0, now);
       return;
     }
 
     this.pending += Math.min(now - this.lastTick || TICK_MS, MAX_CATCH_UP_MS) / 1000;
     this.lastTick = now;
     while (this.pending >= SIM_STEP) {
-      stepGame(this.level, this.game, this.inputs, SIM_STEP);
+      stepGame(this.game, this.inputs, SIM_STEP);
       for (const seat of this.seats.values()) {
         seat.input.interact = false;
+        seat.input.dash = false;
         seat.steps += 1;
       }
       this.pending -= SIM_STEP;

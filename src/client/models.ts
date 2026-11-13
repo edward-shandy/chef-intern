@@ -1,15 +1,15 @@
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
-import type { Ingredient, Level, TileKind } from "../shared/level";
+import type { Level, TileKind } from "../shared/level";
+import type { Ingredient } from "../shared/recipes";
 import {
   BURN_AT,
   isChopped,
-  playerSpeedFraction,
   POT_CAPACITY,
   potIsCooked,
   type Item,
-  type PlayerState,
 } from "../shared/sim";
+import { decoration, model, MODEL_SCALE, modelGeometry, modelMaterial, type ModelName } from "./assets";
 
 export const COLORS = {
   background: 0x1b1624,
@@ -64,9 +64,18 @@ export const COLORS = {
   hair: [0x4a2f1b, 0x1f1a17, 0xb5651d, 0x6b4a8a],
 };
 
-export const WORKTOP_Y = 0.92;
-// Thin props such as boards and hobs lift whatever rests on them by this much.
-export const STATION_LIFT = 0.05;
+export const WORKTOP_Y = 0.5;
+// How far above the worktop an item rests on each kind of station.
+export const restLift = (kind: TileKind): number => (kind === "board" ? 0.075 : kind === "stove" ? 0.105 : 0);
+
+// Places a KayKit model in the world, scaled from the pack's grid to ours.
+function prop(name: ModelName, x: number, y: number, z: number, turn = 0, scale = MODEL_SCALE): THREE.Mesh {
+  const result = model(name);
+  result.position.set(x, y, z);
+  result.rotation.y = turn;
+  result.scale.setScalar(scale);
+  return result;
+}
 export const BAR_WIDTH = 0.7;
 export const LABEL_DARK = "rgba(34, 28, 44, 0.85)";
 
@@ -163,9 +172,9 @@ function floorTexture(level: Level, anisotropy: number): THREE.CanvasTexture {
         const x = tx * size;
         const z = tz * size;
         const seed = tx * 31 + tz * 17;
-        ctx.fillStyle = "#a9785a";
+        ctx.fillStyle = "#8fa3a8";
         ctx.fillRect(x, z, size, size);
-        ctx.fillStyle = (tx + tz) % 2 === 0 ? "#efd9b8" : "#d99a6c";
+        ctx.fillStyle = (tx + tz) % 2 === 0 ? "#f4ecdc" : "#bcd0d2";
         ctx.fillRect(x + 2, z + 2, size - 4, size - 4);
         ctx.fillStyle =
           noise(seed) > 0.5 ? `rgba(255, 255, 255, ${noise(seed + 1) * 0.1})` : `rgba(70, 30, 10, ${noise(seed + 1) * 0.09})`;
@@ -185,26 +194,7 @@ function floorTexture(level: Level, anisotropy: number): THREE.CanvasTexture {
   return texture;
 }
 
-function createBush(x: number, y: number, z: number, seed: number): THREE.Group {
-  const bush = new THREE.Group();
-  for (let i = 0; i < 5; i++) {
-    const angle = (i / 5) * Math.PI * 2 + noise(seed + i);
-    const radius = 0.2 + noise(seed + i * 3) * 0.1;
-    bush.add(
-      mesh(
-        new THREE.IcosahedronGeometry(radius, 1),
-        mat(i % 2 ? COLORS.leaf : COLORS.leafDark, 0.9, 0, true),
-        Math.cos(angle) * 0.17,
-        0.16 + noise(seed + i * 5) * 0.2,
-        Math.sin(angle) * 0.17,
-      ),
-    );
-  }
-  bush.position.set(x, y, z);
-  return bush;
-}
-
-// Floor, a wooden deck around it, planters down both sides, and a dressed back wall with lamps.
+// Floor, a wooden deck around it, and a dressed back wall with lamps.
 export function createRoom(level: Level, anisotropy: number): THREE.Group {
   const room = new THREE.Group();
   const { width, height } = level;
@@ -232,54 +222,13 @@ export function createRoom(level: Level, anisotropy: number): THREE.Group {
   room.add(deck, floor);
 
   const solid = new THREE.Group();
-  solid.add(
-    mesh(box(width + 0.6, 2.5, 0.4), mat(COLORS.wall, 0.9), width / 2, 1.25, -0.2),
-    mesh(box(width + 0.7, 0.16, 0.5), mat(COLORS.wallTrim, 0.7), width / 2, 2.58, -0.2),
-    mesh(box(width + 0.62, 0.14, 0.44), mat(COLORS.wallTrim, 0.7), width / 2, 0.07, -0.2),
-  );
-
-  // Two windows with glazing bars and a sill.
-  const glass = new THREE.MeshStandardMaterial({
-    color: COLORS.windowGlow,
-    emissive: COLORS.windowGlow,
-    emissiveIntensity: 0.6,
-    roughness: 0.15,
-  });
-  for (const x of [width * 0.25, width * 0.75]) {
-    solid.add(
-      mesh(rounded(2.1, 1.0, 0.1, 0.04), mat(COLORS.windowFrame, 0.6), x, 1.82, 0.02),
-      mesh(box(1.9, 0.8, 0.04), glass, x, 1.82, 0.07),
-      mesh(box(0.06, 0.8, 0.06), mat(COLORS.windowFrame, 0.6), x, 1.82, 0.08),
-      mesh(box(1.9, 0.06, 0.06), mat(COLORS.windowFrame, 0.6), x, 1.82, 0.08),
-      mesh(rounded(2.3, 0.08, 0.22, 0.03), mat(COLORS.windowFrame, 0.6), x, 1.3, 0.1),
-    );
-  }
-
-  // A shelf of jars between the windows.
-  const shelfX = width / 2;
-  solid.add(mesh(rounded(2.6, 0.07, 0.3, 0.02), mat(COLORS.crateDark, 0.8), shelfX, 1.62, 0.13));
-  const jarColours = [0xd94f3a, 0xe4b03d, 0x6fa96a, 0x8c6bb1, 0xe07a9a, 0x4fa3c7];
-  jarColours.forEach((colour, i) => {
-    const x = shelfX - 1.05 + i * 0.42;
-    const tall = 0.2 + noise(i + 3) * 0.14;
-    solid.add(
-      mesh(cylinder(0.09, 0.09, tall, 14), mat(colour, 0.3), x, 1.655 + tall / 2, 0.13),
-      mesh(cylinder(0.075, 0.075, 0.04, 14), mat(COLORS.crateDark, 0.6), x, 1.675 + tall, 0.13),
-    );
-  });
-
-  // Planters with bushes run down both sides, and a pot plant sits on each front corner.
-  for (const side of [-1, 1]) {
-    const x = side < 0 ? -0.62 : width + 0.62;
-    solid.add(
-      mesh(rounded(0.62, 0.5, height - 0.4, 0.06), mat(COLORS.crate, 0.85), x, 0.25, height / 2),
-      mesh(box(0.5, 0.04, height - 0.52), mat(0x3b2a20, 1), x, 0.5, height / 2),
-      mesh(cylinder(0.3, 0.22, 0.44, 18), mat(0xc4683f, 0.8), x, 0.22, height + 0.6),
-    );
-    for (let i = 0; i < height - 1; i++) solid.add(createBush(x, 0.5, 0.9 + i, i * 9 + side * 50));
-    const plant = createBush(x, 0.44, height + 0.6, side * 77);
-    plant.scale.setScalar(1.3);
-    solid.add(plant);
+  // The back wall is a row of 2-tile KayKit panels, two with windows and the rest with a dressed shelf.
+  const panels = Math.ceil(width / 2);
+  for (let i = 0; i < panels; i++) {
+    const x = width / 2 + (i - (panels - 1) / 2) * 2;
+    const windowed = i === 1 || i === panels - 2;
+    solid.add(prop(windowed ? "wall_window_open" : "wall", x, 0, -0.13));
+    if (!windowed && i % 2 === 0) solid.add(prop("shelf_papertowel_decorated", x, 1.5, -0.005));
   }
 
   // Pendant lamps hang in front of the wall and pool warm light on the back counters.
@@ -293,12 +242,12 @@ export function createRoom(level: Level, anisotropy: number): THREE.Group {
   for (const fraction of [0.14, 0.5, 0.86]) {
     const x = width * fraction;
     solid.add(
-      mesh(cylinder(0.012, 0.012, 0.5, 6), mat(COLORS.darkSteel, 0.5), x, 2.75, 0.55),
-      mesh(new THREE.ConeGeometry(0.24, 0.26, 20, 1, true), shade, x, 2.42, 0.55),
-      mesh(ball(0.08, 12), new THREE.MeshBasicMaterial({ color: 0xfff1cf }), x, 2.33, 0.55),
+      mesh(cylinder(0.012, 0.012, 0.7, 6), mat(COLORS.darkSteel, 0.5), x, 2.4, 0.5),
+      mesh(new THREE.ConeGeometry(0.22, 0.24, 20, 1, true), shade, x, 1.97, 0.5),
+      mesh(ball(0.07, 12), new THREE.MeshBasicMaterial({ color: 0xfff1cf }), x, 1.89, 0.5),
     );
-    const lamp = new THREE.PointLight(0xffc885, 7, 7.5, 2);
-    lamp.position.set(x, 2.2, 0.9);
+    const lamp = new THREE.PointLight(0xffc885, 6, 7, 2);
+    lamp.position.set(x, 1.75, 0.85);
     room.add(lamp);
   }
   room.add(shadowed(solid));
@@ -339,171 +288,86 @@ export function createLabel(text: string, background = LABEL_DARK): THREE.Sprite
 
 // ---------------------------------------------------------------- food and crockery
 
-export function createWholeIngredient(kind: Ingredient): THREE.Group {
-  const group = new THREE.Group();
-  if (kind === "tomato") {
-    const body = mesh(ball(0.2, 24), mat(COLORS.tomato, 0.25), 0, 0.17, 0);
-    body.scale.y = 0.85;
-    group.add(body, mesh(cylinder(0.014, 0.02, 0.08, 6), mat(COLORS.tomatoStem, 0.7), 0, 0.37, 0));
-    // Five little sepals fan out around the stem.
-    for (let i = 0; i < 5; i++) {
-      const angle = (i / 5) * Math.PI * 2;
-      const sepal = mesh(
-        new THREE.ConeGeometry(0.03, 0.11, 4),
-        mat(COLORS.tomatoStem, 0.7),
-        Math.cos(angle) * 0.05,
-        0.335,
-        Math.sin(angle) * 0.05,
-      );
-      sepal.rotation.set(Math.sin(angle) * 1.25, 0, -Math.cos(angle) * 1.25);
-      group.add(sepal);
-    }
-  } else {
-    // A rough core wrapped in two rings of leaves reads as a head of lettuce.
-    const head = mesh(new THREE.IcosahedronGeometry(0.17, 1), mat(COLORS.lettuce, 0.75, 0, true), 0, 0.18, 0);
-    head.scale.y = 0.85;
-    group.add(head);
-    for (let i = 0; i < 7; i++) {
-      const angle = (i / 7) * Math.PI * 2;
-      const outer = i % 2 === 0;
-      const frill = mesh(
-        new THREE.IcosahedronGeometry(outer ? 0.12 : 0.1, 0),
-        mat(outer ? COLORS.lettuceDark : COLORS.lettuce, 0.8, 0, true),
-        Math.cos(angle) * 0.14,
-        outer ? 0.13 : 0.22,
-        Math.sin(angle) * 0.14,
-      );
-      frill.scale.y = 0.75;
-      group.add(frill);
-    }
-  }
-  return group;
+// One KayKit part of an item, positioned in the pack's own units.
+function part(name: ModelName, x = 0, y = 0, z = 0, turn = 0, scale = 1, ruined = false): THREE.Mesh {
+  const result = model(name, ruined);
+  result.position.set(x, y, z);
+  result.rotation.y = turn;
+  result.scale.setScalar(scale);
+  return result;
 }
 
-// Chopped food reads as a few flat pieces instead of one round shape.
-export function createChoppedIngredient(kind: Ingredient): THREE.Group {
-  const group = new THREE.Group();
-  const spots: Array<[number, number, number]> = [
-    [-0.11, -0.05, 0.3],
-    [0.1, -0.04, -0.2],
-    [0, 0.1, 0.1],
-    [-0.02, -0.02, 0.5],
-  ];
-  spots.forEach(([x, z, tilt], i) => {
-    const onTop = i === 3;
-    if (kind === "tomato") {
-      const slice = new THREE.Group();
-      slice.add(
-        mesh(cylinder(0.095, 0.095, 0.04, 18), mat(COLORS.tomato, 0.3)),
-        mesh(cylinder(0.06, 0.06, 0.045, 14), mat(0xf2705c, 0.35)),
-      );
-      slice.position.set(x, 0.03 + (onTop ? 0.04 : 0), z);
-      slice.rotation.z = onTop ? tilt * 0.4 : 0;
-      group.add(slice);
-    } else {
-      const leaf = mesh(
-        new THREE.IcosahedronGeometry(0.11, 0),
-        mat(i % 2 ? COLORS.lettuce : COLORS.lettuceDark, 0.8, 0, true),
-        x,
-        0.05 + (onTop ? 0.05 : 0),
-        z,
-      );
-      leaf.scale.y = 0.42;
-      leaf.rotation.y = tilt * 3;
-      group.add(leaf);
-    }
-  });
-  return group;
-}
-
-// Plates carry a blue rim so they stand out against the worktops.
-export function createPlate(): THREE.Group {
-  return new THREE.Group().add(
-    mesh(cylinder(0.2, 0.17, 0.02, 28), mat(COLORS.plate, 0.3), 0, 0.01, 0),
-    mesh(cylinder(0.33, 0.22, 0.04, 32), mat(COLORS.plateRim, 0.3), 0, 0.035, 0),
-    mesh(cylinder(0.3, 0.24, 0.03, 32), mat(COLORS.plate, 0.22), 0, 0.045, 0),
-    mesh(cylinder(0.24, 0.24, 0.012, 32), mat(0xf1f3f7, 0.3), 0, 0.058, 0),
-  );
-}
-
-function createPot(item: Extract<Item, { type: "pot" }>): THREE.Group {
-  const group = new THREE.Group();
-  const steel = mat(COLORS.pot, 0.28, 0.75);
-  const rim = mesh(new THREE.TorusGeometry(0.305, 0.03, 10, 32), steel, 0, 0.31, 0);
-  const band = mesh(new THREE.TorusGeometry(0.292, 0.012, 6, 32), mat(COLORS.darkSteel, 0.4, 0.6), 0, 0.1, 0);
-  rim.rotation.x = band.rotation.x = Math.PI / 2;
-  group.add(
-    mesh(cylinder(0.3, 0.27, 0.31, 32), steel, 0, 0.155, 0),
-    rim,
-    band,
-    // The dark disc near the top makes an empty pot look hollow.
-    mesh(cylinder(0.275, 0.275, 0.01, 32), mat(0x24262d, 0.6, 0.3), 0, 0.27, 0),
-  );
-  for (const side of [-1, 1]) {
-    group.add(
-      mesh(rounded(0.18, 0.045, 0.13, 0.02), mat(COLORS.darkSteel, 0.45, 0.4), side * 0.385, 0.25, 0),
-      mesh(ball(0.02, 8), steel, side * 0.315, 0.25, 0.045),
-      mesh(ball(0.02, 8), steel, side * 0.315, 0.25, -0.045),
-    );
-  }
-  if (item.contents === 0) return group;
-
-  const burnt = item.cook >= BURN_AT;
-  const colour = burnt ? COLORS.soupBurnt : item.cook >= 1 ? COLORS.soupCooked : COLORS.soupRaw;
-  const surface = 0.14 + 0.05 * item.contents;
-  group.add(mesh(cylinder(0.272, 0.272, 0.02, 32), mat(colour, 0.2), 0, surface, 0));
-  if (item.contents < POT_CAPACITY) {
-    // Until the pot is full the chopped pieces float on top, so the count is visible.
-    for (let i = 0; i < item.contents; i++) {
-      const angle = i * 2.4 + 0.5;
-      group.add(
-        mesh(cylinder(0.08, 0.08, 0.03, 14), mat(COLORS.tomato, 0.3), Math.cos(angle) * 0.11, surface + 0.02, Math.sin(angle) * 0.11),
-      );
-    }
-  } else if (!burnt) {
-    // Bubbles are animated by the scene while the pot is on a lit hob.
-    const bubbles: THREE.Mesh[] = [];
-    for (let i = 0; i < 6; i++) {
-      const angle = i * 1.9;
-      const reach = 0.06 + (i % 3) * 0.06;
-      const bubble = mesh(ball(0.035, 10), mat(0xf59a7c, 0.2), Math.cos(angle) * reach, surface + 0.01, Math.sin(angle) * reach);
-      bubble.visible = false;
-      bubbles.push(bubble);
-      group.add(bubble);
-    }
-    group.userData.bubbles = bubbles;
-  }
-  return group;
-}
+const WHOLE: Record<Ingredient, ModelName> = {
+  tomato: "food_ingredient_tomato",
+  lettuce: "food_ingredient_lettuce",
+  onion: "food_ingredient_onion",
+};
+const CHOPPED: Record<Ingredient, ModelName> = {
+  tomato: "food_ingredient_tomato_slices",
+  lettuce: "food_ingredient_lettuce_chopped",
+  onion: "food_ingredient_onion_chopped",
+};
+const CRATES: Record<Ingredient, ModelName> = {
+  tomato: "crate_tomatoes",
+  lettuce: "crate_lettuce",
+  onion: "crate_onions",
+};
 
 // Builds an item with its origin at the base so it can sit on any surface.
 export function createItem(item: Item): THREE.Group {
   const group = new THREE.Group();
+  const parts = new THREE.Group();
+  parts.scale.setScalar(MODEL_SCALE);
+  group.add(parts);
+
   if (item.type === "ingredient") {
-    group.add(isChopped(item) ? createChoppedIngredient(item.kind) : createWholeIngredient(item.kind));
+    if (!isChopped(item)) parts.add(part(WHOLE[item.kind]));
+    // The chopped lettuce model is off-centre, so it is nudged back over its tile.
+    else if (item.kind === "lettuce") parts.add(part(CHOPPED.lettuce, -0.3, 0, 0, 0, 0.9));
+    else parts.add(part(CHOPPED[item.kind]));
   } else if (item.type === "plate") {
-    group.add(createPlate());
-    if (item.contents.includes("soup")) {
-      group.add(
-        mesh(cylinder(0.235, 0.235, 0.03, 32), mat(COLORS.soupCooked, 0.2), 0, 0.075, 0),
-        mesh(ball(0.035, 10), mat(COLORS.lettuce, 0.6), 0.03, 0.09, -0.02),
-      );
-    }
-    if (item.contents.includes("lettuce")) {
-      const pile = createChoppedIngredient("lettuce");
-      pile.position.y = 0.06;
-      group.add(pile);
-    }
-    if (item.contents.includes("tomato")) {
-      const slices = createChoppedIngredient("tomato");
-      slices.position.y = item.contents.includes("lettuce") ? 0.12 : 0.06;
-      slices.scale.setScalar(0.85);
-      group.add(slices);
+    if (item.contents.includes("tomato_soup")) {
+      parts.add(part("food_stew"));
+    } else {
+      parts.add(part("plate"));
+      if (item.contents.includes("onion_soup")) parts.add(part("stew_bowl", 0, -0.04, 0));
+      const hasLettuce = item.contents.includes("lettuce");
+      if (hasLettuce) parts.add(part("food_ingredient_lettuce_slice", 0, 0.1, 0));
+      if (item.contents.includes("tomato")) {
+        const y = hasLettuce ? 0.15 : 0.08;
+        parts.add(
+          part("food_ingredient_tomato_slice", -0.12, y, 0.05, 0.4, 0.62),
+          part("food_ingredient_tomato_slice", 0.14, y + 0.02, -0.06, 1.7, 0.62),
+        );
+      }
+      if (item.contents.includes("onion")) parts.add(part(CHOPPED.onion, 0, hasLettuce ? 0.15 : 0.08, 0, 0.8, 0.5));
     }
   } else {
-    const pot = createPot(item);
-    group.add(pot);
-    group.userData.bubbles = pot.userData.bubbles;
+    const ruined = item.cook >= BURN_AT;
+    const full = item.contents >= POT_CAPACITY;
+    parts.add(part(!full ? "pot_A" : item.kind === "onion" ? "pot_B_stew" : "pot_A_stew", 0, 0, 0, 0, 1, ruined));
+    if (!full && item.kind) {
+      // Until the pot is full the chopped pieces lie inside it, so the count is visible.
+      for (let i = 0; i < item.contents; i++) {
+        const angle = i * 2.4 + 0.5;
+        const x = Math.cos(angle) * 0.18;
+        const z = Math.sin(angle) * 0.18;
+        if (item.kind === "tomato") parts.add(part("food_ingredient_tomato_slice", x, 0.1 + i * 0.04, z, angle, 0.6));
+        else parts.add(part(CHOPPED[item.kind], x, 0.08, z, angle, 0.38));
+      }
+    } else if (full && !ruined) {
+      // Bubbles are animated by the scene while the pot is on a lit hob.
+      const bubbles: THREE.Mesh[] = [];
+      for (let i = 0; i < 6; i++) {
+        const angle = i * 1.9;
+        const reach = 0.1 + (i % 3) * 0.1;
+        const bubble = mesh(ball(0.06, 10), mat(0xe8b08a, 0.3), Math.cos(angle) * reach, 0.5, Math.sin(angle) * reach);
+        bubble.visible = false;
+        bubbles.push(bubble);
+        parts.add(bubble);
+      }
+      group.userData.bubbles = bubbles;
+    }
   }
   return shadowed(group);
 }
@@ -513,7 +377,7 @@ export function itemSignature(item: Item): string {
   if (item.type === "ingredient") return `i:${item.kind}:${isChopped(item)}`;
   if (item.type === "plate") return `p:${item.contents.join("+")}`;
   const stage = item.cook >= BURN_AT ? "burnt" : item.cook >= 1 ? "cooked" : "raw";
-  return `k:${item.contents}:${stage}`;
+  return `k:${item.kind}:${item.contents}:${stage}`;
 }
 
 // Fraction and colour of the progress bar an item should show, if any.
@@ -598,26 +462,22 @@ const hazardTexture = () =>
 
 export interface Stations {
   group: THREE.Group;
-  // Burner ring material per stove tile, so cooking pots can make it glow.
-  burners: Map<number, THREE.MeshStandardMaterial>;
   // Ring of flames per stove tile, shown while a pot cooks on it.
   flames: Map<number, THREE.Group>;
   // Middle of the serving windows, where score pop-ups appear.
   serveCentre: THREE.Vector3;
 }
 
-// Draws every solid tile as a cabinet, then dresses each station on top.
+// Draws every solid tile as a KayKit counter or stove, then dresses each station on top.
 export function createStations(level: Level): Stations {
   const group = new THREE.Group();
   const labels = new THREE.Group();
   const unshadowed = new THREE.Group();
-  const burners = new Map<number, THREE.MeshStandardMaterial>();
   const flames = new Map<number, THREE.Group>();
   const serveCentre = new THREE.Vector3();
   let serveTiles = 0;
-  const solid: Array<{ x: number; z: number }> = [];
-  // Cabinet faces that look onto the floor, which get a door and a knob.
-  const fronts: Array<{ x: number; z: number; dx: number; dz: number }> = [];
+  let plants = 0;
+  const counters: Array<{ x: number; z: number; turn: number }> = [];
   const isFloor = (tx: number, tz: number) =>
     tx >= 0 && tz >= 0 && tx < level.width && tz < level.height && level.tiles[tz * level.width + tx].kind === "floor";
 
@@ -637,14 +497,41 @@ export function createStations(level: Level): Stations {
     const x = tx + 0.5;
     const z = tz + 0.5;
     const top = WORKTOP_Y;
-    solid.push({ x, z });
-    const sides = [
-      [1, 0],
-      [-1, 0],
+
+    // Cabinet fronts face the floor next to them; corner pieces face into the kitchen.
+    const side = [
       [0, 1],
       [0, -1],
-    ].filter(([dx, dz]) => isFloor(tx + dx, tz + dz));
-    for (const [dx, dz] of sides) fronts.push({ x, z, dx, dz });
+      [1, 0],
+      [-1, 0],
+    ].find(([dx, dz]) => isFloor(tx + dx, tz + dz));
+    const inward = tz === 0 ? [0, 1] : tz === level.height - 1 ? [0, -1] : tx === 0 ? [1, 0] : [-1, 0];
+    const [faceX, faceZ] = side ?? inward;
+    const turn = Math.atan2(faceX, faceZ);
+    // A sink or fridge stands in for the whole cabinet; if its model is missing a plain counter fills the slot.
+    const fixture =
+      tile.kind === "sink" ? decoration(level.decor.sink) : tile.kind === "fridge" ? decoration(level.decor.fridge) : null;
+    if (fixture) {
+      fixture.position.set(x, 0, z);
+      fixture.rotation.y = turn;
+      // The props are authored at their own size: the sink is squashed to one tile at counter height.
+      if (tile.kind === "sink") fixture.scale.set(0.7, 0.53, 1.18);
+      else fixture.scale.setScalar(1.2);
+      group.add(fixture);
+    } else if (tile.kind === "stove") {
+      group.add(prop("stove_single", x, 0, z, turn));
+    } else {
+      counters.push({ x, z, turn });
+    }
+    if (tile.kind === "plant") {
+      const plant = decoration(level.decor.plants[plants++ % level.decor.plants.length]);
+      if (plant) {
+        plant.position.set(x, top, z);
+        plant.rotation.y = plants * 1.7;
+        plant.scale.setScalar(0.6);
+        group.add(plant);
+      }
+    }
 
     // One tag per run of identical stations, pushed outwards so it clears the worktop.
     const text = STATION_LABELS[tile.kind];
@@ -654,97 +541,38 @@ export function createStations(level: Level): Stations {
       const outX = tx === 0 ? -1 : tx === level.width - 1 ? 1 : 0;
       const outZ = tz === 0 ? -1 : tz === level.height - 1 ? 1 : 0;
       const run = level.tiles[index + 1]?.kind === tile.kind ? 0.5 : 0;
-      label.position.set(x + run + outX * 1.75, top + (outZ > 0 ? -0.35 : 0.3), z + outZ * 0.85);
+      label.position.set(x + run + outX * 1.75, top + (outZ > 0 ? -0.2 : 0.45), z + outZ * 0.85);
       labels.add(label);
     }
 
     if (tile.kind === "crate" && tile.dispenses) {
-      // An open slatted crate with a heap of what it gives out.
-      group.add(
-        mesh(rounded(0.84, 0.3, 0.84, 0.03), mat(COLORS.crate, 0.85), x, top + 0.15, z),
-        mesh(box(0.72, 0.02, 0.72), mat(0x3b2a20, 1), x, top + 0.29, z),
-      );
-      for (const y of [0.07, 0.17, 0.27]) group.add(mesh(box(0.87, 0.035, 0.87), mat(COLORS.crateDark, 0.9), x, top + y, z));
-      for (const cx of [-1, 1]) {
-        for (const cz of [-1, 1]) {
-          group.add(mesh(box(0.08, 0.34, 0.08), mat(COLORS.crateDark, 0.9), x + cx * 0.4, top + 0.17, z + cz * 0.4));
-        }
-      }
-      const heap: Array<[number, number, number, number]> = [
-        [-0.18, 0.2, -0.14, 0.3],
-        [0.18, 0.2, -0.12, 1.4],
-        [0, 0.2, 0.17, 2.6],
-        [-0.17, 0.2, 0.2, 4.1],
-        [0.02, 0.36, 0, 5.2],
-      ];
-      for (const [dx, dy, dz, turn] of heap) {
-        const sample = createWholeIngredient(tile.dispenses);
-        sample.position.set(x + dx, top + dy, z + dz);
-        sample.rotation.y = turn;
-        sample.scale.setScalar(0.8);
-        group.add(sample);
-      }
+      group.add(prop(CRATES[tile.dispenses], x, top, z, turn, 0.43));
+    } else if (tile.kind === "board") {
+      group.add(prop("cuttingboard", x, top, z, turn));
+    } else if (tile.kind === "plates") {
+      group.add(prop("dishrack_plates", x, top, z, turn + Math.PI / 2));
     } else if (tile.kind === "trash") {
       // A chute cut into the worktop, framed with hazard stripes and half covered by a flap.
       const hinge = mesh(cylinder(0.02, 0.02, 0.6, 8), mat(COLORS.steel, 0.3, 0.8), x, top + 0.1, z - 0.28);
       hinge.rotation.z = Math.PI / 2;
       group.add(
-        mesh(rounded(0.8, STATION_LIFT, 0.8, 0.02), hazard, x, top + 0.025, z),
+        mesh(rounded(0.8, 0.05, 0.8, 0.02), hazard, x, top + 0.025, z),
         mesh(box(0.58, 0.02, 0.58), mat(0x0f0d14, 1), x, top + 0.052, z),
         mesh(box(0.56, 0.03, 0.26), mat(COLORS.darkSteel, 0.4, 0.6), x, top + 0.085, z - 0.15),
         hinge,
       );
-    } else if (tile.kind === "board") {
-      // A chopping board with a groove, and a spare knife resting beside it.
-      group.add(
-        mesh(rounded(0.7, STATION_LIFT, 0.56, 0.02), mat(COLORS.board, 0.75), x - 0.06, top + 0.025, z),
-        mesh(box(0.6, 0.005, 0.02), mat(COLORS.crateDark, 0.9), x - 0.06, top + 0.052, z - 0.22),
-        mesh(box(0.045, 0.02, 0.24), mat(COLORS.knife, 0.2, 0.85), x + 0.4, top + 0.012, z - 0.08),
-        mesh(rounded(0.055, 0.035, 0.16, 0.012), mat(COLORS.knifeHandle, 0.5), x + 0.4, top + 0.018, z + 0.12),
-      );
     } else if (tile.kind === "stove") {
-      const burner = new THREE.MeshStandardMaterial({ color: COLORS.burner, emissive: COLORS.burner, emissiveIntensity: 0.25 });
-      const ring = mesh(new THREE.TorusGeometry(0.22, 0.03, 8, 28), burner, x, top + STATION_LIFT, z);
-      ring.rotation.x = Math.PI / 2;
-      burners.set(index, burner);
-      group.add(mesh(rounded(0.94, STATION_LIFT, 0.94, 0.02), mat(COLORS.stove, 0.2, 0.3), x, top + 0.025, z), ring);
-      // A cast-iron trivet holds the pot above the flame.
-      for (const turn of [Math.PI / 4, (Math.PI * 3) / 4]) {
-        const bar = mesh(box(0.74, 0.03, 0.045), mat(COLORS.darkSteel, 0.5, 0.5), x, top + STATION_LIFT + 0.01, z);
-        bar.rotation.y = turn;
-        group.add(bar);
-      }
       const fire = new THREE.Group();
       for (let i = 0; i < 10; i++) {
         const angle = (i / 10) * Math.PI * 2;
-        fire.add(mesh(new THREE.ConeGeometry(0.04, 0.16, 5), flameMaterial, Math.cos(angle) * 0.32, 0.08, Math.sin(angle) * 0.32));
+        fire.add(mesh(new THREE.ConeGeometry(0.035, 0.14, 5), flameMaterial, Math.cos(angle) * 0.26, 0.07, Math.sin(angle) * 0.26));
       }
-      fire.position.set(x, top + STATION_LIFT, z);
+      fire.position.set(x, top + 0.03, z);
       fire.visible = false;
       flames.set(index, fire);
       unshadowed.add(fire);
-      // Control knobs sit on whichever face looks onto the floor.
-      const [dx, dz] = sides[0] ?? [0, 1];
-      for (const offset of [-0.26, 0, 0.26]) {
-        const knob = mesh(
-          cylinder(0.045, 0.045, 0.05, 12),
-          mat(COLORS.steel, 0.3, 0.8),
-          x + dx * 0.5 + dz * offset,
-          0.775,
-          z + dz * 0.5 + dx * offset,
-        );
-        knob.rotation.set(dz ? Math.PI / 2 : 0, 0, dx ? Math.PI / 2 : 0);
-        group.add(knob);
-      }
-    } else if (tile.kind === "plates") {
-      group.add(mesh(rounded(0.86, STATION_LIFT, 0.86, 0.02), mat(COLORS.tray, 0.5), x, top + 0.025, z));
-      for (let i = 0; i < 4; i++) {
-        const plate = createPlate();
-        plate.position.set(x + (i % 2) * 0.012, top + STATION_LIFT + i * 0.045, z);
-        group.add(plate);
-      }
     } else if (tile.kind === "serve") {
-      group.add(mesh(box(1, STATION_LIFT, 1), servePad, x, top + 0.025, z));
+      group.add(mesh(box(1, 0.05, 1), servePad, x, top + 0.025, z));
       serveCentre.add(new THREE.Vector3(x, top, z));
       serveTiles += 1;
       // The first window of a run gets a brass service bell on its corner.
@@ -765,193 +593,19 @@ export function createStations(level: Level): Stations {
   });
   if (serveTiles > 0) serveCentre.divideScalar(serveTiles);
 
-  const kick = new THREE.InstancedMesh(box(0.9, 0.12, 0.9), mat(COLORS.kick, 0.9), solid.length);
-  const base = new THREE.InstancedMesh(rounded(0.98, 0.74, 0.98, 0.04), mat(COLORS.cabinet, 0.55), solid.length);
-  const top = new THREE.InstancedMesh(
-    rounded(1.02, 0.11, 1.02, 0.035),
-    new THREE.MeshStandardMaterial({ map: woodTexture("#e7c592", "#7a4f24", 4, 7), roughness: 0.42 }),
-    solid.length,
-  );
+  // Every plain counter is one instance of the same model, turned to face its floor side.
+  const instanced = new THREE.InstancedMesh(modelGeometry("kitchencounter_straight_A"), modelMaterial(), counters.length);
   const matrix = new THREE.Matrix4();
-  solid.forEach(({ x, z }, i) => {
-    kick.setMatrixAt(i, matrix.makeTranslation(x, 0.06, z));
-    base.setMatrixAt(i, matrix.makeTranslation(x, 0.45, z));
-    top.setMatrixAt(i, matrix.makeTranslation(x, 0.865, z));
-  });
-
-  const doors = new THREE.InstancedMesh(rounded(0.76, 0.5, 0.05, 0.02), mat(COLORS.cabinetDoor, 0.5), fronts.length);
-  const knobs = new THREE.InstancedMesh(ball(0.035, 10), mat(COLORS.brass, 0.25, 0.9), fronts.length);
-  const turn = new THREE.Quaternion();
+  const turned = new THREE.Quaternion();
   const up = new THREE.Vector3(0, 1, 0);
-  const unit = new THREE.Vector3(1, 1, 1);
-  fronts.forEach(({ x, z, dx, dz }, i) => {
-    turn.setFromAxisAngle(up, dx ? Math.PI / 2 : 0);
-    doors.setMatrixAt(i, matrix.compose(new THREE.Vector3(x + dx * 0.49, 0.45, z + dz * 0.49), turn, unit));
-    knobs.setMatrixAt(i, matrix.makeTranslation(x + dx * 0.53 + dz * 0.26, 0.6, z + dz * 0.53 + dx * 0.26));
+  const size = new THREE.Vector3(MODEL_SCALE, MODEL_SCALE, MODEL_SCALE);
+  counters.forEach(({ x, z, turn }, i) => {
+    instanced.setMatrixAt(i, matrix.compose(new THREE.Vector3(x, 0, z), turned.setFromAxisAngle(up, turn), size));
   });
-
-  group.add(kick, base, top, doors, knobs);
+  group.add(instanced);
   shadowed(group);
   group.add(labels, unshadowed);
-  return { group, burners, flames, serveCentre };
-}
-
-// ---------------------------------------------------------------- chef
-
-export interface ChefRig {
-  group: THREE.Group;
-  // Everything above the feet; it bobs and leans, and carries the held item.
-  body: THREE.Group;
-  armL: THREE.Group;
-  armR: THREE.Group;
-  footL: THREE.Mesh;
-  footR: THREE.Mesh;
-  knife: THREE.Group;
-  // Walk cycle position, advanced by distance covered rather than by time.
-  stride: number;
-}
-
-let blobMap: THREE.CanvasTexture | null = null;
-const blobTexture = () =>
-  canvasTexture(64, 64, (ctx) => {
-    const fade = ctx.createRadialGradient(32, 32, 4, 32, 32, 32);
-    fade.addColorStop(0, "rgba(0, 0, 0, 0.5)");
-    fade.addColorStop(1, "rgba(0, 0, 0, 0)");
-    ctx.fillStyle = fade;
-    ctx.fillRect(0, 0, 64, 64);
-  });
-
-export function createChef(seat: number, isLocal: boolean): ChefRig {
-  const colour = COLORS.shirts[seat % COLORS.shirts.length];
-  const group = new THREE.Group();
-  const body = new THREE.Group();
-  const skin = mat(COLORS.skin, 0.7);
-  const white = mat(COLORS.hat, 0.8);
-  const jacket = mat(colour, 0.65);
-  const dark = mat(COLORS.eyes, 0.35);
-  const hair = mat(COLORS.hair[seat % COLORS.hair.length], 0.85);
-
-  // Torso: coloured jacket with buttons, a white apron and a neckerchief.
-  const scarf = mesh(new THREE.TorusGeometry(0.19, 0.05, 8, 20), mat(COLORS.scarf, 0.8), 0, 0.72, 0.01);
-  scarf.rotation.x = Math.PI / 2;
-  const knot = mesh(new THREE.ConeGeometry(0.07, 0.13, 4), mat(COLORS.scarf, 0.8), 0, 0.66, 0.21);
-  knot.rotation.x = Math.PI;
-  body.add(
-    mesh(new THREE.CapsuleGeometry(0.27, 0.24, 6, 20), jacket, 0, 0.46, 0),
-    mesh(rounded(0.38, 0.34, 0.1, 0.04), white, 0, 0.34, 0.225),
-    mesh(ball(0.026, 8), white, -0.07, 0.6, 0.245),
-    mesh(ball(0.026, 8), white, 0.07, 0.6, 0.245),
-    scarf,
-    knot,
-  );
-
-  // Head: big and round, with eyes, cheeks, a smile, ears and hair.
-  const head = new THREE.Group();
-  head.position.y = 1.0;
-  const smile = mesh(new THREE.TorusGeometry(0.055, 0.014, 6, 12, Math.PI), dark, 0, -0.06, 0.27);
-  smile.rotation.z = Math.PI;
-  head.add(mesh(ball(0.3, 28), skin), smile, mesh(ball(0.2, 14), hair, 0, 0.06, -0.17));
-  for (const side of [-1, 1]) {
-    head.add(
-      mesh(ball(0.042, 12), dark, side * 0.105, 0.04, 0.268),
-      mesh(ball(0.014, 8), mat(0xffffff, 0.2), side * 0.105 + 0.012, 0.056, 0.305),
-      mesh(ball(0.05, 10), mat(COLORS.blush, 0.9), side * 0.19, -0.05, 0.215),
-      mesh(ball(0.06, 10), skin, side * 0.295, 0, 0),
-      mesh(ball(0.1, 12), hair, side * 0.2, 0.12, -0.14),
-    );
-  }
-
-  // Toque: a band, a pleated stack and a puffy crown.
-  head.add(
-    mesh(cylinder(0.235, 0.225, 0.14, 24), white, 0, 0.3, 0),
-    mesh(cylinder(0.25, 0.22, 0.26, 12), white, 0, 0.48, 0),
-    mesh(ball(0.2, 18), white, 0, 0.66, 0),
-  );
-  for (let i = 0; i < 5; i++) {
-    const angle = (i / 5) * Math.PI * 2;
-    head.add(mesh(ball(0.14, 14), white, Math.cos(angle) * 0.16, 0.62, Math.sin(angle) * 0.16));
-  }
-  body.add(head);
-
-  // Each arm hangs from a shoulder pivot, so rotating the group swings the whole arm.
-  const arm = (side: number) => {
-    const pivot = new THREE.Group();
-    pivot.position.set(side * 0.33, 0.66, 0);
-    pivot.add(
-      mesh(new THREE.CapsuleGeometry(0.075, 0.14, 4, 12), jacket, 0, -0.12, 0),
-      mesh(cylinder(0.085, 0.085, 0.05, 12), white, 0, -0.23, 0),
-      mesh(ball(0.09, 12), skin, 0, -0.3, 0),
-    );
-    body.add(pivot);
-    return pivot;
-  };
-  const armL = arm(-1);
-  const armR = arm(1);
-  const knife = new THREE.Group().add(
-    mesh(rounded(0.045, 0.14, 0.05, 0.012), mat(COLORS.knifeHandle, 0.5), 0, -0.36, 0.02),
-    mesh(box(0.02, 0.26, 0.1), mat(COLORS.knife, 0.2, 0.85), 0, -0.55, 0.045),
-  );
-  knife.visible = false;
-  armR.add(knife);
-
-  const foot = (side: number) => {
-    const shoe = mesh(ball(0.115, 12), mat(COLORS.shoe, 0.8), side * 0.13, 0.08, 0.03);
-    shoe.scale.set(1, 0.7, 1.4);
-    return shoe;
-  };
-  const footL = foot(-1);
-  const footR = foot(1);
-  group.add(body, footL, footR);
-  shadowed(group);
-
-  // A soft blob grounds the chef, and a coloured ring tells players apart; your own is brighter.
-  blobMap ??= blobTexture();
-  const blob = mesh(
-    new THREE.PlaneGeometry(1.05, 1.05),
-    new THREE.MeshBasicMaterial({ map: blobMap, transparent: true, depthWrite: false }),
-    0,
-    0.012,
-    0,
-  );
-  const ring = mesh(
-    new THREE.RingGeometry(isLocal ? 0.4 : 0.38, isLocal ? 0.52 : 0.45, 40),
-    new THREE.MeshBasicMaterial({ color: colour, transparent: true, opacity: isLocal ? 0.95 : 0.6, depthWrite: false }),
-    0,
-    0.018,
-    0,
-  );
-  blob.rotation.x = ring.rotation.x = -Math.PI / 2;
-  group.add(blob, ring);
-
-  return { group, body, armL, armR, footL, footR, knife, stride: 0 };
-}
-
-// Poses the rig for this frame: walking, carrying, chopping or standing still.
-export function animateChef(rig: ChefRig, player: PlayerState, dt: number, time: number): void {
-  const speed = playerSpeedFraction(player);
-  rig.stride += dt * speed * 15;
-  const swing = Math.sin(rig.stride);
-  const ease = 1 - Math.exp(-14 * dt);
-
-  rig.footL.position.z = 0.03 + swing * 0.15 * speed;
-  rig.footR.position.z = 0.03 - swing * 0.15 * speed;
-  rig.footL.position.y = 0.08 + Math.max(0, Math.cos(rig.stride)) * 0.08 * speed;
-  rig.footR.position.y = 0.08 + Math.max(0, -Math.cos(rig.stride)) * 0.08 * speed;
-  // A little idle breathing keeps a standing chef from looking frozen.
-  rig.body.position.y = Math.abs(swing) * 0.05 * speed + Math.sin(time * 2.4) * 0.008;
-  rig.body.rotation.x += (speed * 0.14 + (player.chopping ? 0.22 : 0) - rig.body.rotation.x) * ease;
-  rig.body.rotation.z = swing * 0.04 * speed;
-
-  rig.knife.visible = player.chopping;
-  if (player.chopping) {
-    // The knife arm pumps quickly while the other hand steadies the food.
-    rig.armL.rotation.x += (-0.9 - rig.armL.rotation.x) * ease;
-    rig.armR.rotation.x = -1.3 + Math.abs(Math.sin(time * 16)) * 0.95;
-    return;
-  }
-  const carrying = player.held !== null;
-  rig.armL.rotation.x += ((carrying ? -1.15 : swing * 0.75 * speed) - rig.armL.rotation.x) * ease;
-  rig.armR.rotation.x += ((carrying ? -1.15 : -swing * 0.75 * speed) - rig.armR.rotation.x) * ease;
+  return { group, flames, serveCentre };
 }
 
 // ---------------------------------------------------------------- effects

@@ -17,21 +17,26 @@
     </header>
     <div class="play-hud" hidden>
       <section class="orders" id="orders" aria-label="Orders"></section>
-      <div class="stat stat-score"><small>Score</small><b id="score">0</b></div>
+      <div class="stat stat-score">
+        <small id="level-name">Kitchen 1</small>
+        <b><span id="score">0</span><span class="goal-of">/ <span id="target">0</span></span></b>
+        <div class="goal" id="goal"><i></i></div>
+      </div>
       <div class="stat stat-timer"><small>Time left</small><b id="timer">3:00</b></div>
     </div>
     <section id="gameover" class="gameover" hidden>
       <div class="gameover-card">
-        <p class="gameover-kicker">Service is over</p>
-        <h2>Time's up!</h2>
-        <p class="gameover-score"><b id="final-score">0</b> points</p>
+        <p class="gameover-kicker" id="result-kicker"></p>
+        <h2 id="result-title"></h2>
+        <p class="gameover-score"><b id="final-score">0</b> / <span id="final-target">0</span> points</p>
+        <div class="goal goal-large" id="final-goal"><i></i></div>
         <p id="final-orders" class="gameover-orders"></p>
-        <p class="gameover-hint">Press <kbd>E</kbd> or click to play again</p>
+        <p class="gameover-hint">Press <kbd>E</kbd> or click to <span id="result-next"></span></p>
       </div>
     </section>
     <p class="hint">
-      <kbd>WASD</kbd> move <span>·</span> <kbd>E</kbd> or <kbd>click</kbd> use <span>·</span> hold <kbd>F</kbd> or
-      <kbd>right-click</kbd> chop <span>·</span> point the mouse to pick a nearby counter
+      <kbd>WASD</kbd> move <span>·</span> <kbd>Shift</kbd> dash <span>·</span> <kbd>E</kbd> or <kbd>click</kbd> use
+      <span>·</span> hold <kbd>F</kbd> or <kbd>right-click</kbd> chop
     </p>
     <script type="module" src="/src/client/main.ts"></script>
   </body>

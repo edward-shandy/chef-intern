@@ -1,13 +1,11 @@
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import type { Level } from "../shared/level";
+import { isFixture, type Level } from "../shared/level";
 import type { GameState, Item } from "../shared/sim";
 import {
-  animateChef,
   animateSteam,
   BAR_WIDTH,
   COLORS,
-  createChef,
   createItem,
   createLabel,
   createPointerMarker,
@@ -20,17 +18,19 @@ import {
   itemSignature,
   labelTexture,
   potStatus,
-  STATION_LIFT,
+  restLift,
   WORKTOP_Y,
-  type ChefRig,
   type ProgressBar,
 } from "./models";
+import { animateChef, createChef, type ChefRig } from "./chef";
 
 const EMPTY_STATE = { players: [], tileItems: {}, score: 0, delivered: 0 } as unknown as GameState;
 // Aimed a little behind the kitchen centre, which leaves the top of the screen free for order tickets.
 const CAMERA_HOME = new THREE.Vector3(0, 18, 12.2);
 const CAMERA_TARGET = new THREE.Vector3(0, 0, -0.7);
 const POPUP_SECONDS = 1.3;
+// `?zoom=2` moves the camera closer, for inspecting models up close.
+const DEBUG_ZOOM = Math.max(1, Number(new URLSearchParams(location.search).get("zoom")) || 1);
 
 interface ItemView {
   signature: string;
@@ -61,11 +61,14 @@ export interface Frame {
 export interface KitchenView {
   // Station under a screen position, or null when the pointer is over floor or off the kitchen.
   pick(clientX: number, clientY: number): number | null;
+  // Rebuilds the kitchen when the round moves to a different layout; a no-op otherwise.
+  setLevel(level: Level): void;
   // Runs the render loop; onFrame returns the state to draw this frame.
   start(onFrame: () => Frame): void;
 }
 
-export function createKitchenView(canvas: HTMLCanvasElement, level: Level): KitchenView {
+export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level): KitchenView {
+  let level = initialLevel;
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.shadowMap.enabled = true;
@@ -111,8 +114,10 @@ export function createKitchenView(canvas: HTMLCanvasElement, level: Level): Kitc
   const world = new THREE.Group();
   world.position.set(-level.width / 2, 0, -level.height / 2);
   scene.add(world);
-  const stations = createStations(level);
-  world.add(createRoom(level, renderer.capabilities.getMaxAnisotropy()), stations.group);
+  const anisotropy = renderer.capabilities.getMaxAnisotropy();
+  let stations = createStations(level);
+  let room = createRoom(level, anisotropy);
+  world.add(room, stations.group);
 
   const marker = createTargetMarker();
   const pointerMarker = createPointerMarker();
@@ -140,11 +145,25 @@ export function createKitchenView(canvas: HTMLCanvasElement, level: Level): Kitc
   let lastScore: number | null = null;
   let lastDelivered = 0;
 
-  const tileCentre = (index: number) => ({ x: (index % level.width) + 0.5, z: Math.floor(index / level.width) + 0.5 });
-  const restHeight = (index: number) => {
-    const kind = level.tiles[index].kind;
-    return WORKTOP_Y + (kind === "board" || kind === "stove" ? STATION_LIFT : 0);
+  // Tears down everything tied to the old layout and builds the new kitchen in its place.
+  const setLevel = (next: Level) => {
+    if (next === level) return;
+    for (const view of resting.values()) view.mesh.removeFromParent();
+    for (const bar of bars.values()) bar.group.removeFromParent();
+    for (const fx of potFx.values()) world.remove(fx.badge, fx.steam);
+    resting.clear();
+    bars.clear();
+    potFx.clear();
+    world.remove(room, stations.group);
+    level = next;
+    stations = createStations(level);
+    room = createRoom(level, anisotropy);
+    world.position.set(-level.width / 2, 0, -level.height / 2);
+    world.add(room, stations.group);
   };
+
+  const tileCentre = (index: number) => ({ x: (index % level.width) + 0.5, z: Math.floor(index / level.width) + 0.5 });
+  const restHeight = (index: number) => WORKTOP_Y + restLift(level.tiles[index].kind);
 
   // Swaps in a fresh mesh whenever the item's look changes, with a little pop.
   const syncItem = (view: ItemView | null, item: Item | null, parent: THREE.Object3D): ItemView | null => {
@@ -191,14 +210,12 @@ export function createKitchenView(canvas: HTMLCanvasElement, level: Level): Kitc
         fx.steam.visible = Boolean(status && status.steam !== "none");
         if (status?.badge) {
           fx.badge.material.map = labelTexture(status.badge, status.badgeColour);
-          fx.badge.position.set(x, y + 1.25 + (status.ready ? Math.abs(Math.sin(time * 6)) * 0.12 : 0), z);
+          fx.badge.position.set(x, y + 1.1 + (status.ready ? Math.abs(Math.sin(time * 6)) * 0.12 : 0), z);
         }
         if (status && fx.steam.visible) animateSteam(fx.steam, time, status.steam === "dark");
       }
-      // The hob under a cooking pot glows, its flames flicker and the soup bubbles.
+      // Flames flicker under a cooking pot and its soup bubbles.
       const cooking = Boolean(status?.cooking) && level.tiles[index].kind === "stove";
-      const burner = stations.burners.get(index);
-      if (burner) burner.emissiveIntensity = cooking ? 1.6 + Math.sin(time * 9) * 0.4 : 0.25;
       const fire = stations.flames.get(index);
       if (fire) {
         fire.visible = cooking;
@@ -215,7 +232,7 @@ export function createKitchenView(canvas: HTMLCanvasElement, level: Level): Kitc
       let bar = bars.get(index);
       if (progress && !bar) {
         bar = createProgressBar();
-        bar.group.position.set(x, y + 0.85, z);
+        bar.group.position.set(x, y + 0.75, z);
         world.add(bar.group);
         bars.set(index, bar);
       }
@@ -235,7 +252,7 @@ export function createKitchenView(canvas: HTMLCanvasElement, level: Level): Kitc
     chefs.delete(id);
   };
 
-  const syncChefs = (state: GameState, localId: number | null, dt: number, time: number) => {
+  const syncChefs = (state: GameState, localId: number | null, dt: number) => {
     for (const [id, view] of chefs) {
       const player = state.players.find((other) => other.id === id);
       // A rig built before we knew our own seat is rebuilt so the right chef gets the bright ring.
@@ -259,9 +276,9 @@ export function createKitchenView(canvas: HTMLCanvasElement, level: Level): Kitc
       const delta = Math.atan2(Math.sin(player.facing - rotation.y), Math.cos(player.facing - rotation.y));
       rotation.y += delta * (1 - Math.exp(-18 * dt));
 
-      animateChef(view.rig, player, dt, time);
+      animateChef(view.rig, player, dt);
       view.held = syncItem(view.held, player.held, view.rig.body);
-      view.held?.mesh.position.set(0, 0.42, 0.5);
+      view.held?.mesh.position.set(0, 0.42, 0.42);
     }
   };
 
@@ -270,15 +287,15 @@ export function createKitchenView(canvas: HTMLCanvasElement, level: Level): Kitc
     if (target !== null) {
       const { x, z } = tileCentre(target);
       // Sits just above boards and hobs so thin props never cover the frame.
-      marker.group.position.set(x, WORKTOP_Y + STATION_LIFT + 0.02, z);
+      marker.group.position.set(x, WORKTOP_Y + 0.13, z);
       marker.frame.scale.setScalar(1 + Math.sin(time * 6) * 0.035);
-      marker.arrow.position.y = 1.5 + Math.sin(time * 6) * 0.08;
+      marker.arrow.position.y = 1.35 + Math.sin(time * 6) * 0.08;
       marker.arrow.rotation.y = time * 2;
     }
     pointerMarker.visible = pointed !== null;
     if (pointed !== null) {
       const { x, z } = tileCentre(pointed);
-      pointerMarker.position.set(x, WORKTOP_Y + STATION_LIFT + 0.03, z);
+      pointerMarker.position.set(x, WORKTOP_Y + 0.14, z);
       pointerMarker.scale.setScalar(1 + Math.sin(time * 5) * 0.03);
     }
   };
@@ -315,7 +332,7 @@ export function createKitchenView(canvas: HTMLCanvasElement, level: Level): Kitc
     renderer.setSize(clientWidth, clientHeight, false);
     camera.aspect = clientWidth / clientHeight;
     // Pull the camera back on narrow screens so the whole kitchen stays in frame.
-    camera.position.copy(CAMERA_HOME).multiplyScalar(Math.max(1, 1.6 / camera.aspect));
+    camera.position.copy(CAMERA_HOME).multiplyScalar(Math.max(1, 1.6 / camera.aspect) / DEBUG_ZOOM);
     camera.lookAt(CAMERA_TARGET);
     camera.updateProjectionMatrix();
     // Fog starts behind the kitchen wherever the camera ends up, so only the far ground fades out.
@@ -327,13 +344,15 @@ export function createKitchenView(canvas: HTMLCanvasElement, level: Level): Kitc
   resize();
 
   return {
+    setLevel,
+
     pick(clientX, clientY) {
       const bounds = canvas.getBoundingClientRect();
       pointer.set(((clientX - bounds.left) / bounds.width) * 2 - 1, -((clientY - bounds.top) / bounds.height) * 2 + 1);
       raycaster.setFromCamera(pointer, camera);
       // Stations are found at worktop height, which is where they appear under the cursor.
       const tile = tileOnPlane(WORKTOP_Y);
-      return tile !== null && level.tiles[tile].kind !== "floor" ? tile : null;
+      return tile !== null && level.tiles[tile].kind !== "floor" && !isFixture(level.tiles[tile]) ? tile : null;
     },
 
     start(onFrame) {
@@ -344,7 +363,7 @@ export function createKitchenView(canvas: HTMLCanvasElement, level: Level): Kitc
         const { state, localId, target, pointed } = onFrame();
         const shown = state ?? EMPTY_STATE;
         syncRestingItems(shown, time);
-        syncChefs(shown, localId, dt, time);
+        syncChefs(shown, localId, dt);
         syncMarkers(target, pointed, time);
         if (state) syncPopups(state, dt);
         for (const object of popping) {

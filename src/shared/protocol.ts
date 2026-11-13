@@ -18,6 +18,6 @@ export type ServerMessage =
 
 // Messages a client sends to its room.
 export type ClientMessage =
-  | { type: "input"; seq: number; moveX: number; moveZ: number; use: boolean; aim: number | null }
+  | { type: "input"; seq: number; moveX: number; moveZ: number; use: boolean; aim: number | null; dash: boolean }
   | { type: "interact"; aim: number | null }
   | { type: "ping"; t: number };

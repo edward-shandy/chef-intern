@@ -298,6 +298,54 @@ kbd {
   }
 }
 
+.stat-score b {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.goal-of {
+  font-size: 15px;
+  font-weight: 700;
+  opacity: 0.65;
+}
+
+/* Target bar: fills with the score and turns green once the target is reached. */
+.goal {
+  width: 150px;
+  height: 8px;
+  margin-top: 6px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: rgb(255 246 230 / 0.18);
+}
+
+.goal i {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  transform-origin: left;
+  transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+  background: var(--amber);
+}
+
+.goal.reached i {
+  background: var(--green);
+}
+
+.goal-large {
+  width: 100%;
+  height: 12px;
+  margin: 10px 0 8px;
+  border-radius: 6px;
+  background: rgb(36 29 48 / 0.14);
+}
+
+.gameover[data-result="won"] .gameover-kicker,
+.gameover[data-result="won"] .gameover-score b {
+  color: #2f9e5b;
+}
+
 /* ---- game over ---- */
 
 .gameover {
@@ -448,5 +496,9 @@ kbd {
   .gameover,
   .gameover-card {
     animation: none;
+  }
+
+  .goal i {
+    transition: none;
   }
 }

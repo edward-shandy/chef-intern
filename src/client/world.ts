@@ -1,4 +1,4 @@
-import type { Level } from "../shared/level";
+import { LEVELS } from "../shared/level";
 import type { Acks } from "../shared/protocol";
 import { IDLE_INPUT, predictPlayer, SIM_STEP, type GameState, type PlayerInput, type PlayerState } from "../shared/sim";
 
@@ -37,7 +37,7 @@ export interface ClientWorld {
 }
 
 // Hides latency: the local chef moves at once and is quietly corrected against the server.
-export function createClientWorld(level: Level): ClientWorld {
+export function createClientWorld(): ClientWorld {
   let localId: number | null = null;
   let latest: GameState | null = null;
   let snapshots: Snapshot[] = [];
@@ -69,7 +69,7 @@ export function createClientWorld(level: Level): ClientWorld {
       budget -= steps;
       for (let step = 0; step < steps; step++) {
         before = { x: next.x, z: next.z };
-        predictPlayer(level, next, entry.input, others(), SIM_STEP);
+        predictPlayer(LEVELS[latest?.level ?? 0], next, entry.input, others(), SIM_STEP);
       }
       // The part-step left over carries on as the blend between the last two positions.
       if (isCurrent && playing) accumulator = Math.min(STEP_MS, unseen - steps * STEP_MS);
@@ -148,7 +148,7 @@ export function createClientWorld(level: Level): ClientWorld {
         accumulator += dt;
         while (accumulator >= STEP_MS) {
           before = { x: predicted.x, z: predicted.z };
-          predictPlayer(level, predicted, current.input, others(), SIM_STEP);
+          predictPlayer(LEVELS[latest.level], predicted, current.input, others(), SIM_STEP);
           accumulator -= STEP_MS;
         }
       }
