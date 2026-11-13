@@ -1,14 +1,22 @@
 # Chef Intern — Modular 3D Prop Kit
 
-This kit contains 14 original, self-contained GLB game props generated for the Chef Intern prototype. They are separate assets and are not yet wired into the game client.
+This kit contains original, self-contained GLB game props generated for the Chef Intern prototype. They are separate assets and are not yet wired into the game client.
 
 ## Contents
+
+For a visual contact sheet rendered from the GLB geometry, see `restaurant-assets-preview.png`.
 
 - `fridge_cream.glb`, `fridge_double.glb`, `fridge_retro.glb`, `fridge_pro.glb`
 - `sink_single.glb`, `sink_wood_double.glb`, `sink_industrial.glb`, `sink_farmhouse.glb`
 - `plant_pink.glb`, `plant_blossom.glb`, `plant_bamboo.glb`, `plant_tropical.glb`, `plant_lime.glb`, `plant_succulent.glb`
+- `kitchen-floor-checker.glb` — 4 × 4 patch of cream and sage ceramic tiles.
+- `dining-set-gingham.glb` — gingham dining table with four wooden chairs.
+- `counter-front-oak.glb` — two-door oak cabinet section with brass pulls.
+- `kitchen-halfwall-brick.glb` — brick half-wall segment with end piers and cap.
+- `wall-dressing-panel.glb` — framed food art, spice shelf, jars, and a sconce.
+- `dining-detail-pack.glb` — A-frame menu sign, condiment tray, and candle.
 
-All meshes use embedded geometry and simple PBR color materials; there are no external texture dependencies. Assets are authored at approximately one game-tile scale (plants and fridges are taller props; sinks are counter-height props). Models are original procedural assets and do not include third-party content.
+All meshes use embedded geometry and simple PBR color materials; there are no external texture dependencies. Assets are authored at approximately one game-tile scale (plants and fridges are taller props; sinks are counter-height props). The six restaurant refresh props are sized as modular decor: the floor patch covers 4 × 4 tiles, the cabinet and wall segments are 2 tiles wide, and the dining props are tabletop or wall scale. Models are original procedural assets and do not include third-party content.
 
 ## Three.js import example
 
