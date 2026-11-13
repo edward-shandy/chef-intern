@@ -194,7 +194,40 @@ function floorTexture(level: Level, anisotropy: number): THREE.CanvasTexture {
   return texture;
 }
 
-// Floor, a wooden deck around it, and a dressed back wall with lamps.
+// The generated wall panels are 2.4 tall; squashed a little they match the kitchen's proportions.
+const WALL_SQUASH = 0.85;
+// Dining sets and guests are authored larger than the KayKit kitchen, so they are scaled to sit beside it.
+const DINING_SCALE = 0.78;
+const CHAIR_OFFSET = 0.82;
+const GUEST_SEAT_HEIGHT = 0.16;
+
+function diningFloorTexture(anisotropy: number): THREE.CanvasTexture {
+  const texture = canvasTexture(128, 128, (ctx) => {
+    for (let x = 0; x < 2; x++) {
+      for (let z = 0; z < 2; z++) {
+        ctx.fillStyle = "#8a7f86";
+        ctx.fillRect(x * 64, z * 64, 64, 64);
+        ctx.fillStyle = (x + z) % 2 === 0 ? "#e9dccb" : "#c9bdb4";
+        ctx.fillRect(x * 64 + 2, z * 64 + 2, 60, 60);
+      }
+    }
+  });
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.anisotropy = anisotropy;
+  return texture;
+}
+
+// Guests sway a little in their seats and hop when an order is delivered.
+export function animateGuests(room: THREE.Group, time: number, cheer: number): void {
+  const guests = (room.userData.guests ?? []) as THREE.Object3D[];
+  guests.forEach((guest, i) => {
+    const hop = cheer > 0 ? Math.abs(Math.sin(cheer * Math.PI * 3 + i)) * 0.22 * cheer : 0;
+    guest.position.y = (guest.userData.restY as number) + Math.sin(time * 1.8 + i * 1.3) * 0.012 + hop;
+    guest.rotation.z = Math.sin(time * 1.1 + i * 2.1) * 0.035;
+  });
+}
+
+// Floor, a wooden deck around it, the restaurant or a plain wall behind, and lamps over the back counters.
 export function createRoom(level: Level, anisotropy: number): THREE.Group {
   const room = new THREE.Group();
   const { width, height } = level;
@@ -222,14 +255,90 @@ export function createRoom(level: Level, anisotropy: number): THREE.Group {
   room.add(deck, floor);
 
   const solid = new THREE.Group();
-  // The back wall is a row of 2-tile KayKit panels, two with windows and the rest with a dressed shelf.
-  const panels = Math.ceil(width / 2);
-  for (let i = 0; i < panels; i++) {
-    const x = width / 2 + (i - (panels - 1) / 2) * 2;
-    const windowed = i === 1 || i === panels - 2;
-    solid.add(prop(windowed ? "wall_window_open" : "wall", x, 0, -0.13));
-    if (!windowed && i % 2 === 0) solid.add(prop("shelf_papertowel_decorated", x, 1.5, -0.005));
+  const plan = level.decor.room;
+  const guests: THREE.Object3D[] = [];
+  if (plan) {
+    // A tiled dining floor surrounds the kitchen and sits just under its own floor.
+    const depth = height + 3.6;
+    const span = width + plan.margin * 2;
+    const tiles = diningFloorTexture(anisotropy);
+    tiles.repeat.set(span / 2, depth / 2);
+    const dining = mesh(
+      new THREE.PlaneGeometry(span, depth),
+      new THREE.MeshStandardMaterial({ map: tiles, roughness: 0.6 }),
+      width / 2,
+      -0.008,
+      depth / 2 - 0.3,
+    );
+    dining.rotation.x = -Math.PI / 2;
+    dining.receiveShadow = true;
+    room.add(dining);
+
+    // Wall panels are two tiles wide; the kitchen's own run is centred and the dining room continues it.
+    const panel = (name: string, x: number, z: number, turn: number) => {
+      const wall = decoration(name);
+      if (!wall) return;
+      wall.position.set(x, 0, z);
+      wall.rotation.y = turn;
+      wall.scale.y = WALL_SQUASH;
+      solid.add(wall);
+    };
+    const first = width / 2 - (plan.backWall.length - 1);
+    plan.backWall.forEach((name, i) => panel(name, first + i * 2, -0.22, 0));
+    const edge = plan.backWall.length - width / 2;
+    for (let x = edge + 1; x < plan.margin + 1; x += 2) {
+      panel(plan.outerWall, -x, -0.22, 0);
+      panel(plan.outerWall, width + x, -0.22, 0);
+    }
+    for (let i = 0; i * 2 < depth - 1; i++) {
+      const name = plan.sideWalls[i % plan.sideWalls.length];
+      panel(name, -plan.margin - 0.2, 0.8 + i * 2, Math.PI / 2);
+      panel(name, width + plan.margin + 0.2, 0.8 + i * 2, -Math.PI / 2);
+    }
+
+    // Each table is a set with a chair at either end; guests are placed on the chairs, facing the table.
+    for (const table of plan.tables) {
+      const set = new THREE.Group();
+      const furniture = decoration(table.model);
+      if (!furniture) continue;
+      set.add(furniture);
+      table.guests.forEach((name, seat) => {
+        const guest = name ? decoration(name) : null;
+        if (!guest) return;
+        const side = seat === 0 ? -1 : 1;
+        guest.position.set(side * CHAIR_OFFSET, GUEST_SEAT_HEIGHT, 0);
+        guest.rotation.y = (-side * Math.PI) / 2;
+        guest.userData.restY = GUEST_SEAT_HEIGHT;
+        guests.push(guest);
+        set.add(guest);
+      });
+      set.position.set(table.x, 0, table.z);
+      set.scale.setScalar(DINING_SCALE);
+      solid.add(set);
+    }
+    for (const spot of plan.plants) {
+      const plant = decoration(spot.model);
+      if (!plant) continue;
+      plant.position.set(spot.x, 0, spot.z);
+      solid.add(plant);
+    }
+    // Two warm lights hang over the dining room so the tables are not left in the kitchen's shadow.
+    for (const x of [-plan.margin / 2, width + plan.margin / 2]) {
+      const glow = new THREE.PointLight(0xffc885, 9, 10, 2);
+      glow.position.set(x, 2.8, height / 2);
+      room.add(glow);
+    }
+  } else {
+    // Without a restaurant plan the back wall is a row of 2-tile KayKit panels, two with windows.
+    const panels = Math.ceil(width / 2);
+    for (let i = 0; i < panels; i++) {
+      const x = width / 2 + (i - (panels - 1) / 2) * 2;
+      const windowed = i === 1 || i === panels - 2;
+      solid.add(prop(windowed ? "wall_window_open" : "wall", x, 0, -0.13));
+      if (!windowed && i % 2 === 0) solid.add(prop("shelf_papertowel_decorated", x, 1.5, -0.005));
+    }
   }
+  room.userData.guests = guests;
 
   // Pendant lamps hang in front of the wall and pool warm light on the back counters.
   const shade = new THREE.MeshStandardMaterial({
@@ -541,7 +650,7 @@ export function createStations(level: Level): Stations {
       const outX = tx === 0 ? -1 : tx === level.width - 1 ? 1 : 0;
       const outZ = tz === 0 ? -1 : tz === level.height - 1 ? 1 : 0;
       const run = level.tiles[index + 1]?.kind === tile.kind ? 0.5 : 0;
-      label.position.set(x + run + outX * 1.75, top + (outZ > 0 ? -0.2 : 0.45), z + outZ * 0.85);
+      label.position.set(x + run + outX * 1.2, top + (outZ > 0 ? -0.2 : 0.45), z + outZ * 0.85);
       labels.add(label);
     }
 

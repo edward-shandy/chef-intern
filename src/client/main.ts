@@ -239,7 +239,20 @@ function playRoom(roomCode: string): void {
     if (import.meta.env.DEV) Object.assign(window, { __world: world, __view: view, __shown: () => shown });
   };
 
-  const decorNames = LEVELS.flatMap(({ decor }) => [decor.sink, decor.fridge, ...decor.plants]);
+  const decorNames = LEVELS.flatMap(({ decor }) => [
+    decor.sink,
+    decor.fridge,
+    ...decor.plants,
+    ...(decor.room
+      ? [
+          ...decor.room.backWall,
+          decor.room.outerWall,
+          ...decor.room.sideWalls,
+          ...decor.room.tables.flatMap((table) => [table.model, ...table.guests]),
+          ...decor.room.plants.map((plant) => plant.model),
+        ]
+      : []),
+  ]).filter(Boolean);
   Promise.all([loadModels(), loadChefs(), loadProps([...new Set(decorNames)])]).then(startGame, (error) => {
     status.dataset.state = "offline";
     status.textContent = "Could not load the kitchen";

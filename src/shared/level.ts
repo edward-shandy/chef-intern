@@ -19,6 +19,22 @@ export interface Decor {
   sink: string;
   fridge: string;
   plants: string[];
+  // The restaurant around the kitchen; without it the kitchen stands alone against a plain wall.
+  room?: RoomDecor;
+}
+
+// Positions are in tiles, measured from the kitchen's back-left corner like everything else.
+export interface RoomDecor {
+  // Panels of the kitchen's back wall from left to right, each two tiles wide.
+  backWall: string[];
+  // Panel that continues the back wall across the dining room, and the ones lining its sides.
+  outerWall: string;
+  sideWalls: string[];
+  // How many tiles of dining room lie to the left and right of the kitchen.
+  margin: number;
+  // A table with its chairs; guests sit left then right, and an empty string leaves a chair free.
+  tables: Array<{ model: string; x: number; z: number; guests: string[] }>;
+  plants: Array<{ model: string; x: number; z: number }>;
 }
 
 export interface Tile {
@@ -92,7 +108,40 @@ export const LEVELS: Level[] = [
     "Open Kitchen",
     60,
     ["lettuce_salad", "salad", "soup"],
-    { sink: "sink_farmhouse", fridge: "fridge_cream", plants: ["plant_lime", "plant_succulent"] },
+    {
+      sink: "sink_farmhouse",
+      fridge: "fridge_cream",
+      plants: ["plant_lime", "plant_succulent"],
+      // A cosy restaurant: tables down both sides of the kitchen, windows along the walls, plants in the corners.
+      room: {
+        backWall: [
+          "wall_teal_backsplash",
+          "wall_window",
+          "wall_teal_backsplash",
+          "wall_teal_backsplash",
+          "wall_teal_backsplash",
+          "wall_window",
+          "wall_teal_backsplash",
+        ],
+        outerWall: "wall_brick",
+        sideWalls: ["wall_window", "wall_brick"],
+        margin: 6,
+        tables: [
+          { model: "dining_round", x: -3.6, z: 1.5, guests: ["guest_coral", "guest_blue"] },
+          { model: "dining_square", x: -3.6, z: 4.3, guests: ["guest_mint", ""] },
+          { model: "dining_booth", x: -3.6, z: 7.1, guests: ["", "guest_mustard"] },
+          { model: "dining_square", x: 16.6, z: 1.5, guests: ["guest_mustard", "guest_coral"] },
+          { model: "dining_booth", x: 16.6, z: 4.3, guests: ["guest_blue", ""] },
+          { model: "dining_round", x: 16.6, z: 7.1, guests: ["", "guest_mint"] },
+        ],
+        plants: [
+          { model: "plant_pink", x: -5.7, z: 0.5 },
+          { model: "plant_blossom", x: 18.7, z: 0.5 },
+          { model: "plant_tropical", x: 0.4, z: 10.4 },
+          { model: "plant_bamboo", x: 12.6, z: 10.4 },
+        ],
+      },
+    },
     [
       "V#T#L#K#P##FV",
       "#S.........S#",

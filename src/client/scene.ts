@@ -3,6 +3,7 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { isFixture, type Level } from "../shared/level";
 import type { GameState, Item } from "../shared/sim";
 import {
+  animateGuests,
   animateSteam,
   BAR_WIDTH,
   COLORS,
@@ -99,10 +100,10 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
   key.position.set(-5, 13, 7);
   key.castShadow = true;
   key.shadow.mapSize.set(lowPower ? 1024 : 2048, lowPower ? 1024 : 2048);
-  key.shadow.camera.left = -level.width / 2 - 2.5;
-  key.shadow.camera.right = level.width / 2 + 2.5;
-  key.shadow.camera.top = level.height / 2 + 3;
-  key.shadow.camera.bottom = -level.height / 2 - 3;
+  key.shadow.camera.left = -level.width / 2 - 7;
+  key.shadow.camera.right = level.width / 2 + 7;
+  key.shadow.camera.top = level.height / 2 + 4;
+  key.shadow.camera.bottom = -level.height / 2 - 5;
   key.shadow.camera.near = 1;
   key.shadow.camera.far = 34;
   key.shadow.bias = -0.0004;
@@ -146,6 +147,8 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
   const popups: Popup[] = [];
   let lastScore: number | null = null;
   let lastDelivered = 0;
+  // Counts down from 1 after a delivery, while the guests celebrate.
+  let cheer = 0;
 
   // Tears down everything tied to the old layout and builds the new kitchen in its place.
   const setLevel = (next: Level) => {
@@ -306,6 +309,7 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
   const syncPopups = (state: GameState, dt: number) => {
     if (lastScore !== null && state.score !== lastScore && state.delivered >= lastDelivered) {
       const gained = state.score - lastScore;
+      if (gained > 0) cheer = 1;
       const sprite = createLabel(gained > 0 ? `+${gained}` : `${gained}`, gained > 0 ? "#2f9e5b" : "#d23c2c");
       sprite.scale.set(1.7, 0.53, 1);
       const baseY = stations.serveCentre.y + 1.1;
@@ -368,6 +372,8 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
         syncChefs(shown, localId, dt);
         syncMarkers(target, pointed, time);
         if (state) syncPopups(state, dt);
+        cheer = Math.max(0, cheer - dt / 1.2);
+        animateGuests(room, time, cheer);
         for (const object of popping) {
           const scale = object.scale.x + (1 - object.scale.x) * (1 - Math.exp(-20 * dt));
           object.scale.setScalar(scale);
