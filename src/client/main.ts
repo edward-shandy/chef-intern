@@ -1,12 +1,15 @@
 import { DEFAULT_ROOM, MAX_PLAYERS, ROOM_CODE_PATTERN } from "../shared/constants";
 import { KITCHEN_01 } from "../shared/level";
-import type { GameState } from "../shared/sim";
-import { createAutopilot } from "./autopilot";
+import { inReach, targetTile, type GameState, type PlayerInput } from "../shared/sim";
 import { createHud } from "./hud";
 import { createKeyboard } from "./input";
 import { connectRoom, type ConnectionState } from "./net";
 import { createKitchenView } from "./scene";
+import { createClientWorld } from "./world";
 import "./style.css";
+
+const PING_EVERY_MS = 4000;
+const level = KITCHEN_01;
 
 const requested = new URLSearchParams(location.search).get("room")?.toUpperCase() ?? "";
 const roomCode = ROOM_CODE_PATTERN.test(requested) ? requested : DEFAULT_ROOM;
@@ -14,76 +17,121 @@ const roomCode = ROOM_CODE_PATTERN.test(requested) ? requested : DEFAULT_ROOM;
 const status = document.querySelector<HTMLElement>("#status")!;
 const STATUS_TEXT: Record<Exclude<ConnectionState, "online">, string> = {
   connecting: "Connecting…",
-  offline: "Offline, retrying…",
+  offline: "Reconnecting…",
   full: `Room ${roomCode} is full`,
+  replaced: "Opened in another tab",
 };
 
-// The server owns the game; this client only sends input and draws the latest snapshot.
-const net = {
-  connection: "connecting" as ConnectionState,
-  state: null as GameState | null,
-  localId: null as number | null,
-};
-const sent = { moveX: 0, moveZ: 0, use: false };
+// The server owns the game; the world predicts our own chef and smooths everyone else.
+const world = createClientWorld(level);
 const hud = createHud();
+const sent = { moveX: 0, moveZ: 0, use: false, aim: null as number | null };
+let connection: ConnectionState = "connecting";
+let ping: number | null = null;
+let shown: GameState | null = null;
 
 const renderStatus = () => {
-  status.dataset.state = net.connection;
+  status.dataset.state = connection;
+  const chefs = `${world.latest?.players.length ?? 0}/${MAX_PLAYERS} chefs`;
   status.textContent =
-    net.connection === "online"
-      ? `Room ${roomCode} · ${net.state?.players.length ?? 0}/${MAX_PLAYERS} chefs`
-      : STATUS_TEXT[net.connection];
+    connection === "online"
+      ? `Room ${roomCode} · ${chefs}${ping === null ? "" : ` · ${ping} ms`}`
+      : STATUS_TEXT[connection];
 };
 
 const room = connectRoom(roomCode, {
   onState: (next) => {
-    net.connection = next;
-    if (next !== "online") net.state = null;
-    sent.moveX = sent.moveZ = 0;
-    sent.use = false;
-    hud.update(net.state);
+    connection = next;
+    if (next !== "online") {
+      world.disconnect();
+      ping = null;
+      hud.update(null);
+    }
     renderStatus();
   },
   onMessage: (message) => {
+    const now = performance.now();
     if (message.type === "welcome") {
-      net.localId = message.id;
-      return;
+      world.welcome(message.id, now);
+      // Forces whatever is held down right now to be sent again under the new session.
+      Object.assign(sent, { moveX: 0, moveZ: 0, use: false, aim: null });
+    } else if (message.type === "pong") {
+      ping = Math.round(now - message.t);
+      renderStatus();
+    } else if (message.type === "state") {
+      const countChanged = message.players.length !== world.latest?.players.length;
+      world.onSnapshot(message, message.acks, now);
+      hud.update(message);
+      if (countChanged) renderStatus();
     }
-    const countChanged = message.players.length !== net.state?.players.length;
-    net.state = message;
-    hud.update(message);
-    if (countChanged) renderStatus();
   },
 });
 renderStatus();
+setInterval(() => {
+  if (connection === "online") room.send({ type: "ping", t: performance.now() });
+}, PING_EVERY_MS);
 
 const keyboard = createKeyboard();
-const autopilot = createAutopilot(KITCHEN_01);
 const canvas = document.querySelector<HTMLCanvasElement>("#game")!;
-const view = createKitchenView(canvas, KITCHEN_01);
+const view = createKitchenView(canvas, level);
 
-canvas.addEventListener("pointermove", (event) => view.setHover(view.pick(event.clientX, event.clientY)));
-canvas.addEventListener("pointerleave", () => view.setHover(null));
+// The mouse only ever points at stations; walking is keyboard-only.
+const pointer = { tile: null as number | null, movedAt: 0, chopping: false };
+const localPlayer = () => shown?.players.find((player) => player.id === world.localId);
+
+// The pointed-at station, if it is within reach and the mouse moved after the last movement key.
+const currentAim = (): number | null => {
+  const me = localPlayer();
+  if (!me || pointer.tile === null || pointer.movedAt < keyboard.movedAt()) return null;
+  return inReach(level, me, pointer.tile) ? pointer.tile : null;
+};
+
+const track = (event: PointerEvent) => {
+  pointer.tile = view.pick(event.clientX, event.clientY);
+  pointer.movedAt = performance.now();
+};
+canvas.addEventListener("pointermove", track);
+canvas.addEventListener("pointerleave", () => {
+  pointer.tile = null;
+  pointer.chopping = false;
+});
+canvas.addEventListener("contextmenu", (event) => event.preventDefault());
+canvas.addEventListener("pointerup", () => (pointer.chopping = false));
+canvas.addEventListener("pointercancel", () => (pointer.chopping = false));
 canvas.addEventListener("pointerdown", (event) => {
-  if (event.button !== 0 || !net.state) return;
+  if (!shown) return;
+  track(event);
   // After the round a click anywhere asks for a rematch, like pressing E.
-  if (net.state.phase === "over") return room.send({ type: "interact" });
-  const tile = view.pick(event.clientX, event.clientY);
-  if (tile !== null) autopilot.goTo(tile, net.state, net.localId);
+  if (shown.phase === "over") return room.send({ type: "interact", aim: null });
+  const aim = currentAim();
+  if (aim === null) return;
+  // Left click uses the station; holding the right button chops on it.
+  if (event.button === 0) room.send({ type: "interact", aim });
+  else if (event.button === 2) pointer.chopping = true;
 });
 
 view.start(() => {
-  // Any keyboard input takes over from a click-to-walk in progress.
+  const now = performance.now();
   const keys = keyboard.sample();
-  if (keys.moveX || keys.moveZ || keys.use || keys.interact) autopilot.cancel();
-  const input = autopilot.step(net.state, net.localId) ?? keys;
-  // Movement is only sent when it changes, which keeps message volume tiny.
-  if (input.moveX !== sent.moveX || input.moveZ !== sent.moveZ || input.use !== sent.use) {
-    Object.assign(sent, { moveX: input.moveX, moveZ: input.moveZ, use: input.use });
-    room.send({ type: "input", ...sent });
+  const aim = currentAim();
+  const input: PlayerInput = { ...keys, use: keys.use || pointer.chopping, aim };
+
+  // Input is only sent when it changes, which keeps message volume tiny.
+  if (connection === "online" && world.localId !== null) {
+    const moved = input.moveX !== sent.moveX || input.moveZ !== sent.moveZ || input.use !== sent.use;
+    if (moved || (input.use && input.aim !== sent.aim)) {
+      Object.assign(sent, { moveX: input.moveX, moveZ: input.moveZ, use: input.use, aim: input.aim });
+      room.send({ type: "input", seq: world.pushInput(input, now), ...sent });
+    }
+    if (input.interact) room.send({ type: "interact", aim });
   }
-  if (input.interact) room.send({ type: "interact" });
-  return net;
+
+  shown = world.frame(now);
+  const me = localPlayer();
+  const target = me && shown?.phase === "playing" ? targetTile(level, me, aim) : null;
+  canvas.style.cursor = aim === null ? "default" : "pointer";
+  // A pointed-at station that is not the active target is out of reach, and gets its own outline.
+  return { state: shown, localId: world.localId, target, pointed: pointer.tile === target ? null : pointer.tile };
 });
 
-if (import.meta.env.DEV) Object.assign(window, { __net: net, __view: view });
+if (import.meta.env.DEV) Object.assign(window, { __world: world, __view: view, __shown: () => shown });

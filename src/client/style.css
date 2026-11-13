@@ -1,6 +1,15 @@
 :root {
   color-scheme: dark;
   font-family: "Nunito", system-ui, sans-serif;
+  --cream: #fff6e6;
+  --paper: #fffaf0;
+  --ink: #241d30;
+  --panel: rgb(26 20 36 / 0.72);
+  --teal: #2f7f86;
+  --green: #5fd38a;
+  --amber: #f2b84b;
+  --red: #ef6b5a;
+  --pop: cubic-bezier(0.2, 0.9, 0.3, 1.25);
 }
 
 html,
@@ -8,13 +17,34 @@ body {
   margin: 0;
   height: 100%;
   overflow: hidden;
-  background: #2a2338;
+  background: #1f1929;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+kbd {
+  padding: 2px 6px;
+  border-radius: 6px;
+  font: inherit;
+  color: var(--ink);
+  background: var(--cream);
+  box-shadow: 0 2px 0 rgb(0 0 0 / 0.3);
 }
 
 #game {
   display: block;
   width: 100vw;
   height: 100vh;
+}
+
+/* Darkens the corners so the eye stays on the kitchen. */
+.vignette {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 45%, transparent 55%, rgb(12 8 20 / 0.55) 100%);
+  pointer-events: none;
 }
 
 .hud {
@@ -31,7 +61,7 @@ body {
   font-size: 22px;
   font-weight: 900;
   letter-spacing: 0.02em;
-  color: #fff6e6;
+  color: var(--cream);
   text-shadow: 0 2px 0 rgb(0 0 0 / 0.35);
 }
 
@@ -40,8 +70,8 @@ body {
   border-radius: 999px;
   font-size: 13px;
   font-weight: 700;
-  color: #fff6e6;
-  background: rgb(0 0 0 / 0.4);
+  color: var(--cream);
+  background: var(--panel);
   font-variant-numeric: tabular-nums;
 }
 
@@ -52,111 +82,160 @@ body {
   height: 8px;
   margin-right: 8px;
   border-radius: 50%;
-  background: #f2b84b;
+  background: var(--amber);
 }
 
 #status[data-state="online"]::before {
-  background: #5fd38a;
+  background: var(--green);
 }
 
-#status[data-state="offline"]::before {
-  background: #ef6b5a;
+#status[data-state="offline"]::before,
+#status[data-state="full"]::before,
+#status[data-state="replaced"]::before {
+  background: var(--red);
 }
 
-.hint {
-  position: fixed;
-  left: 50%;
-  bottom: 18px;
-  margin: 0;
-  transform: translateX(-50%);
-  padding: 8px 14px;
-  border-radius: 999px;
-  font-size: 13px;
-  font-weight: 700;
-  white-space: nowrap;
-  color: #fff6e6;
-  background: rgb(0 0 0 / 0.4);
-  pointer-events: none;
-}
-
-.hint span {
-  margin: 0 6px;
-  opacity: 0.5;
-}
-
-.hint kbd {
-  padding: 2px 6px;
-  border-radius: 6px;
-  font: inherit;
-  color: #2a2338;
-  background: #fff6e6;
-}
-
-[hidden] {
-  display: none !important;
-}
+/* ---- order tickets ---- */
 
 .orders {
   position: fixed;
-  top: 60px;
+  top: 56px;
   left: 50%;
   display: flex;
-  gap: 8px;
+  align-items: flex-start;
+  gap: 10px;
   transform: translateX(-50%);
   pointer-events: none;
 }
 
+/* The shadow lives on the wrapper because the paper's torn edge is a mask, which would clip it. */
 .order {
-  display: grid;
-  grid-template-columns: auto 1fr;
+  filter: drop-shadow(0 4px 0 rgb(0 0 0 / 0.3));
+  animation: ticket-in 0.36s var(--pop) both;
+}
+
+.order-paper {
+  width: 128px;
+  padding: 12px 10px 16px;
+  box-sizing: border-box;
+  color: var(--ink);
+  background: linear-gradient(var(--teal) 0 6px, var(--paper) 6px);
+  border-radius: 8px 8px 0 0;
+  --tooth: conic-gradient(from -45deg at bottom, #000 90deg, #0000 0) bottom / 12px 7px repeat-x;
+  -webkit-mask: linear-gradient(#000 0 0) top / 100% calc(100% - 7px) no-repeat, var(--tooth);
+  mask: linear-gradient(#000 0 0) top / 100% calc(100% - 7px) no-repeat, var(--tooth);
+}
+
+.order-icons {
+  display: flex;
   align-items: center;
-  gap: 2px 8px;
-  min-width: 132px;
-  padding: 8px 10px;
-  border-radius: 12px;
-  color: #2a2338;
-  background: #fff6e6;
-  box-shadow: 0 3px 0 rgb(0 0 0 / 0.3);
+  justify-content: center;
+  gap: 2px;
+  height: 30px;
 }
 
 .order-icon {
-  font-size: 20px;
+  display: grid;
+  width: 26px;
+  height: 26px;
+}
+
+/* Soup tickets carry five icons, so the ingredients shrink to leave room for the bowl. */
+.order-icons:has(.order-icon-arrow) .order-icon {
+  width: 19px;
+  height: 19px;
+}
+
+.order-icons .order-icon-arrow {
+  width: 14px;
+}
+
+.order-icons .order-icon-soup {
+  width: 28px;
+  height: 28px;
+}
+
+.order-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 6px;
 }
 
 .order-name {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 900;
   white-space: nowrap;
 }
 
+.order-points {
+  font-size: 12px;
+  font-weight: 900;
+  color: var(--teal);
+  font-variant-numeric: tabular-nums;
+}
+
+.order-points::before {
+  content: "+";
+}
+
 .order-time {
-  grid-column: 1 / -1;
   height: 6px;
+  margin-top: 6px;
   overflow: hidden;
   border-radius: 3px;
-  background: rgb(42 35 56 / 0.15);
+  background: rgb(36 29 48 / 0.14);
 }
 
 .order-time i {
   display: block;
   height: 100%;
+  border-radius: 3px;
   transform-origin: left;
-  background: #5fd38a;
+  background: var(--green);
+}
+
+.order.warn .order-time i {
+  background: var(--amber);
 }
 
 .order.urgent .order-time i {
-  background: #ef6b5a;
+  background: var(--red);
 }
+
+.order.urgent .order-paper {
+  animation: ticket-shake 0.45s ease-in-out infinite;
+}
+
+@keyframes ticket-in {
+  from {
+    opacity: 0;
+    transform: translateY(-22px) rotate(-5deg);
+  }
+}
+
+@keyframes ticket-shake {
+  25% {
+    transform: rotate(-1.6deg);
+  }
+  75% {
+    transform: rotate(1.6deg);
+  }
+}
+
+/* ---- score and timer ---- */
 
 .stat {
   position: fixed;
   bottom: 16px;
   display: grid;
-  min-width: 84px;
-  padding: 8px 14px;
-  border-radius: 14px;
-  color: #fff6e6;
-  background: rgb(0 0 0 / 0.4);
+  min-width: 96px;
+  padding: 8px 16px 10px;
+  border-radius: 16px;
+  color: var(--cream);
+  background: var(--panel);
+  box-shadow: 0 4px 0 rgb(0 0 0 / 0.25);
   font-variant-numeric: tabular-nums;
   pointer-events: none;
 }
@@ -170,7 +249,7 @@ body {
 }
 
 .stat b {
-  font-size: 26px;
+  font-size: 30px;
   font-weight: 900;
   line-height: 1.1;
 }
@@ -179,62 +258,195 @@ body {
   left: 16px;
 }
 
+.stat-score b {
+  justify-self: start;
+  transform-origin: left center;
+}
+
 .stat-timer {
   right: 16px;
   text-align: right;
 }
 
-#timer.urgent {
-  color: #ff8a7a;
+#score.bump {
+  animation: score-bump 0.4s var(--pop);
 }
+
+#score.bump[data-change="up"] {
+  --flash: var(--green);
+}
+
+#score.bump[data-change="down"] {
+  --flash: var(--red);
+}
+
+#timer.urgent {
+  color: var(--red);
+  animation: timer-pulse 1s ease-in-out infinite;
+}
+
+@keyframes score-bump {
+  30% {
+    color: var(--flash);
+    transform: scale(1.35);
+  }
+}
+
+@keyframes timer-pulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+/* ---- game over ---- */
 
 .gameover {
   position: fixed;
   inset: 0;
   display: grid;
-  place-content: center;
-  gap: 6px;
-  text-align: center;
-  color: #fff6e6;
-  background: rgb(26 20 36 / 0.78);
+  place-items: center;
+  background: rgb(18 13 26 / 0.7);
   pointer-events: none;
+  animation: fade-in 0.25s ease-out both;
+}
+
+.gameover-card {
+  min-width: 280px;
+  padding: 26px 34px 24px;
+  border-radius: 22px;
+  text-align: center;
+  color: var(--ink);
+  background: var(--paper);
+  box-shadow: 0 8px 0 rgb(0 0 0 / 0.35);
+  animation: card-in 0.45s var(--pop) both;
+}
+
+.gameover-card p {
+  margin: 0;
+}
+
+.gameover-kicker {
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--teal);
 }
 
 .gameover h2 {
-  margin: 0;
-  font-size: 44px;
+  margin: 2px 0 10px;
+  font-size: 40px;
   font-weight: 900;
+  line-height: 1.05;
 }
 
-.gameover p {
-  margin: 0;
+.gameover-score {
   font-size: 18px;
   font-weight: 700;
 }
 
+.gameover-score b {
+  font-size: 46px;
+  font-weight: 900;
+  line-height: 1;
+  color: #d2411f;
+  font-variant-numeric: tabular-nums;
+}
+
+.gameover-orders {
+  font-size: 15px;
+  font-weight: 700;
+  opacity: 0.7;
+}
+
 .gameover-hint {
-  margin-top: 14px !important;
-  opacity: 0.8;
+  margin-top: 18px !important;
+  font-size: 14px;
+  font-weight: 700;
 }
 
-.gameover kbd {
-  padding: 2px 8px;
-  border-radius: 6px;
-  font: inherit;
-  color: #2a2338;
-  background: #fff6e6;
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
 }
 
-@media (max-width: 700px) {
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.92);
+  }
+}
+
+/* ---- controls hint ---- */
+
+.hint {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  margin: 0;
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  color: var(--cream);
+  background: var(--panel);
+  pointer-events: none;
+}
+
+.hint span {
+  margin: 0 6px;
+  opacity: 0.5;
+}
+
+@media (max-width: 760px) {
   .hint {
     display: none;
   }
 
-  .order-name {
+  .orders {
+    gap: 6px;
+  }
+
+  .order-paper {
+    width: 78px;
+    padding: 10px 6px 14px;
+  }
+
+  .order-row {
     display: none;
   }
 
-  .order {
-    min-width: 56px;
+  .order-icon,
+  .order-icons .order-icon-soup {
+    width: 20px;
+    height: 20px;
+  }
+
+  .order-icons:has(.order-icon-arrow) .order-icon {
+    width: 12px;
+    height: 12px;
+  }
+
+  .order-icons .order-icon-arrow {
+    width: 8px;
+  }
+
+  .order-icons:has(.order-icon-arrow) .order-icon-soup {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .order,
+  .order.urgent .order-paper,
+  #score.bump,
+  #timer.urgent,
+  .gameover,
+  .gameover-card {
+    animation: none;
   }
 }

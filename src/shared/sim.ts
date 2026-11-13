@@ -9,6 +9,8 @@ export const BURN_AT = 1.75;
 const PLAYER_SPEED = 4.6;
 const PLAYER_ACCEL = 16;
 const REACH = 0.75;
+// How far a counter's nearest edge may be for a chef to use it when aiming at it directly.
+const AIM_RANGE = 0.8;
 const CHOP_SECONDS = 1.2;
 const COOK_SECONDS = 8;
 const ROUND_SECONDS = 180;
@@ -77,11 +79,13 @@ export interface PlayerInput {
   moveZ: number;
   // Held down to chop.
   use: boolean;
+  // Tile the player is pointing at, or null to use whatever the chef is facing.
+  aim: number | null;
   // True only on the step where the interact button was pressed.
   interact: boolean;
 }
 
-export const IDLE_INPUT: PlayerInput = { moveX: 0, moveZ: 0, use: false, interact: false };
+export const IDLE_INPUT: PlayerInput = { moveX: 0, moveZ: 0, use: false, aim: null, interact: false };
 
 export const isChopped = (item: Item): boolean => item.type === "ingredient" && item.chop >= 1;
 export const potIsCooked = (cook: number): boolean => cook >= 1 && cook < BURN_AT;
@@ -128,8 +132,20 @@ export function removePlayer(state: GameState, id: number): void {
   state.players = state.players.filter((player) => player.id !== id);
 }
 
-// Index of the solid tile the player is facing and close enough to use, if any.
-export function targetTile(level: Level, player: PlayerState): number | null {
+// True when the tile is a station close enough for this chef to use by pointing at it.
+export function inReach(level: Level, player: PlayerState, tile: number): boolean {
+  const kind = level.tiles[tile]?.kind;
+  if (!kind || kind === "floor") return false;
+  const tx = tile % level.width;
+  const tz = Math.floor(tile / level.width);
+  const dx = player.x - Math.max(tx, Math.min(player.x, tx + 1));
+  const dz = player.z - Math.max(tz, Math.min(player.z, tz + 1));
+  return Math.hypot(dx, dz) <= AIM_RANGE;
+}
+
+// The station a chef will use: the aimed tile when it is in reach, otherwise the one it faces.
+export function targetTile(level: Level, player: PlayerState, aim: number | null = null): number | null {
+  if (aim !== null && inReach(level, player, aim)) return aim;
   const tx = Math.floor(player.x + Math.sin(player.facing) * REACH);
   const tz = Math.floor(player.z + Math.cos(player.facing) * REACH);
   const tile = tileAt(level, tx, tz);
@@ -190,9 +206,15 @@ function serve(state: GameState, plate: Extract<Item, { type: "plate" }>): void 
   state.delivered += 1;
 }
 
-function interact(level: Level, state: GameState, player: PlayerState): void {
-  const index = targetTile(level, player);
+// Turns the chef towards a tile it is using, so aimed actions never happen behind its back.
+function faceTile(level: Level, player: PlayerState, tile: number): void {
+  player.facing = Math.atan2((tile % level.width) + 0.5 - player.x, Math.floor(tile / level.width) + 0.5 - player.z);
+}
+
+function interact(level: Level, state: GameState, player: PlayerState, aim: number | null): void {
+  const index = targetTile(level, player, aim);
   if (index === null) return;
+  if (index === aim) faceTile(level, player, index);
   const tile = level.tiles[index];
   const resting = state.tileItems[index];
   const held = player.held;
@@ -237,10 +259,11 @@ function interact(level: Level, state: GameState, player: PlayerState): void {
   }
 }
 
-function chop(level: Level, state: GameState, player: PlayerState, dt: number): void {
+function chop(level: Level, state: GameState, player: PlayerState, aim: number | null, dt: number): void {
   if (player.held) return;
-  const index = targetTile(level, player);
+  const index = targetTile(level, player, aim);
   if (index === null || level.tiles[index].kind !== "board") return;
+  if (index === aim) faceTile(level, player, index);
   const item = state.tileItems[index];
   if (item?.type === "ingredient" && item.chop < 1) {
     item.chop = Math.min(1, item.chop + dt / CHOP_SECONDS);
@@ -317,6 +340,44 @@ function separatePlayers(players: PlayerState[]): void {
   }
 }
 
+// Turns and accelerates one chef towards its input, without any collision handling.
+function movePlayer(player: PlayerState, input: PlayerInput, dt: number): void {
+  let { moveX, moveZ } = input;
+  const length = Math.hypot(moveX, moveZ);
+  if (length > 1) {
+    moveX /= length;
+    moveZ /= length;
+  }
+  if (length > 0.1) player.facing = Math.atan2(moveX, moveZ);
+
+  const blend = Math.min(1, PLAYER_ACCEL * dt);
+  player.vx += (moveX * PLAYER_SPEED - player.vx) * blend;
+  player.vz += (moveZ * PLAYER_SPEED - player.vz) * blend;
+  player.x += player.vx * dt;
+  player.z += player.vz * dt;
+}
+
+// Moves a single chef the way the server will, treating the other chefs as fixed obstacles.
+export function predictPlayer(
+  level: Level,
+  player: PlayerState,
+  input: PlayerInput,
+  others: PlayerState[],
+  dt: number,
+): void {
+  movePlayer(player, input, dt);
+  for (const other of others) {
+    const dx = player.x - other.x;
+    const dz = player.z - other.z;
+    const distance = Math.hypot(dx, dz);
+    if (distance >= PLAYER_RADIUS * 2 || distance < 1e-6) continue;
+    const push = (PLAYER_RADIUS * 2 - distance) / distance;
+    player.x += dx * push;
+    player.z += dz * push;
+  }
+  resolveCollisions(level, player);
+}
+
 // Advances the whole game by dt seconds; inputs are keyed by player id.
 export function stepGame(level: Level, state: GameState, inputs: Record<number, PlayerInput>, dt: number): void {
   if (state.phase === "over") {
@@ -326,29 +387,15 @@ export function stepGame(level: Level, state: GameState, inputs: Record<number, 
     return;
   }
 
-  for (const player of state.players) {
-    let { moveX, moveZ } = inputs[player.id] ?? IDLE_INPUT;
-    const length = Math.hypot(moveX, moveZ);
-    if (length > 1) {
-      moveX /= length;
-      moveZ /= length;
-    }
-    if (length > 0.1) player.facing = Math.atan2(moveX, moveZ);
-
-    const blend = Math.min(1, PLAYER_ACCEL * dt);
-    player.vx += (moveX * PLAYER_SPEED - player.vx) * blend;
-    player.vz += (moveZ * PLAYER_SPEED - player.vz) * blend;
-    player.x += player.vx * dt;
-    player.z += player.vz * dt;
-  }
+  for (const player of state.players) movePlayer(player, inputs[player.id] ?? IDLE_INPUT, dt);
 
   separatePlayers(state.players);
   for (const player of state.players) {
     resolveCollisions(level, player);
     const input = inputs[player.id] ?? IDLE_INPUT;
     player.chopping = false;
-    if (input.interact) interact(level, state, player);
-    if (input.use) chop(level, state, player, dt);
+    if (input.interact) interact(level, state, player, input.aim);
+    if (input.use) chop(level, state, player, input.aim, dt);
   }
 
   cookPots(level, state, dt);

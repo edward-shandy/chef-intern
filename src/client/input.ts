@@ -10,9 +10,10 @@ const HANDLED_KEYS = new Set([
 ]);
 
 // Tracks held keys and hands the simulation one input sample per step.
-export function createKeyboard(): { sample(): PlayerInput } {
+export function createKeyboard(): { sample(): PlayerInput; movedAt(): number } {
   const down = new Set<string>();
   let interactQueued = false;
+  let movedAt = 0;
 
   window.addEventListener("keydown", (event) => {
     if (!HANDLED_KEYS.has(event.code)) return;
@@ -20,6 +21,7 @@ export function createKeyboard(): { sample(): PlayerInput } {
     if (event.repeat) return;
     down.add(event.code);
     if (INTERACT_KEYS.has(event.code)) interactQueued = true;
+    else if (!USE_KEYS.includes(event.code)) movedAt = performance.now();
   });
   window.addEventListener("keyup", (event) => down.delete(event.code));
   window.addEventListener("blur", () => down.clear());
@@ -28,6 +30,8 @@ export function createKeyboard(): { sample(): PlayerInput } {
     Number(positive.some((code) => down.has(code))) - Number(negative.some((code) => down.has(code)));
 
   return {
+    // When a movement key was last pressed, so the mouse aim can yield to the keyboard.
+    movedAt: () => movedAt,
     sample() {
       const interact = interactQueued;
       interactQueued = false;
@@ -35,6 +39,7 @@ export function createKeyboard(): { sample(): PlayerInput } {
         moveX: axis(["KeyA", "ArrowLeft"], ["KeyD", "ArrowRight"]),
         moveZ: axis(["KeyW", "ArrowUp"], ["KeyS", "ArrowDown"]),
         use: USE_KEYS.some((code) => down.has(code)),
+        aim: null,
         interact,
       };
     },
