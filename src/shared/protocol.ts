@@ -21,4 +21,6 @@ export type ClientMessage =
   | { type: "input"; seq: number; moveX: number; moveZ: number; use: boolean; aim: number | null; dash: boolean }
   | { type: "interact"; aim: number | null }
   | { type: "start" }
+  // Picks the kitchen while the room is still in its lobby; `level` is an index into LEVELS.
+  | { type: "level"; level: number }
   | { type: "ping"; t: number };

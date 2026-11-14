@@ -30,7 +30,9 @@ const SEATS = [
 const element = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
 
 // Keeps the DOM overlay in step with server snapshots, touching it only when values change.
-export function createHud(): { update(state: GameState | null, localId: number | null): void } {
+export function createHud(onLevel: (level: number) => void): {
+  update(state: GameState | null, localId: number | null): void;
+} {
   const root = element(".play-hud");
   const orders = element("#orders");
   const score = element("#score");
@@ -47,6 +49,16 @@ export function createHud(): { update(state: GameState | null, localId: number |
   const resultNext = element("#result-next");
   const waiting = element("#waiting");
   const lobbyChefs = element("#lobby-chefs");
+  // One button per kitchen; anyone in the lobby may pick, and the server tells everyone the result.
+  const levelButtons = LEVELS.map((level, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "lobby-level";
+    button.innerHTML = `<b>${index + 1}</b><span>${level.name}</span>`;
+    button.addEventListener("click", () => onLevel(index));
+    return button;
+  });
+  element("#levels").replaceChildren(...levelButtons);
   let lobbyKey = "";
   const cards = new Map<number, HTMLElement>();
   let shownScore: number | null = null;
@@ -79,6 +91,7 @@ export function createHud(): { update(state: GameState | null, localId: number |
         shownScore = state.score;
         score.textContent = String(state.score);
       }
+      levelButtons.forEach((button, index) => button.setAttribute("aria-pressed", String(index === state.level)));
       // One row per seat, rebuilt only when someone joins or leaves.
       const seats = state.players.map((player) => player.id).sort();
       const key = `${seats.join(",")}:${localId}`;

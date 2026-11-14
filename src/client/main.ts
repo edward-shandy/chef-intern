@@ -91,7 +91,7 @@ function playRoom(roomCode: string): void {
   const world = createClientWorld();
   // The kitchen changes between rounds, so the layout is always read from the latest snapshot.
   const currentLevel = () => LEVELS[world.latest?.level ?? 0];
-  const hud = createHud();
+  const hud = createHud((level) => room.send({ type: "level", level }));
   element("#room-code").textContent = roomCode;
   element("#leave").addEventListener("click", leaveRoom);
   element("#leave-lobby").addEventListener("click", leaveRoom);
@@ -250,6 +250,8 @@ function playRoom(roomCode: string): void {
           ...decor.room.sideWalls,
           ...decor.room.tables.flatMap((table) => [table.model, ...table.guests]),
           ...decor.room.plants.map((plant) => plant.model),
+          ...(decor.room.extras ?? []).map((extra) => extra.model),
+          decor.room.halfWall ?? "",
         ]
       : []),
   ]).filter(Boolean);

@@ -9,6 +9,9 @@ export type TileKind =
   | "stove"
   | "plates"
   | "serve"
+  // Dish washing: served plates come back dirty at the return hatch and are cleaned at the wash sink.
+  | "return"
+  | "wash"
   // Fixtures that fill a cabinet slot but cannot be used: a sink, a fridge, or a counter with a pot plant on it.
   | "sink"
   | "fridge"
@@ -35,6 +38,14 @@ export interface RoomDecor {
   // A table with its chairs; guests sit left then right, and an empty string leaves a chair free.
   tables: Array<{ model: string; x: number; z: number; guests: string[] }>;
   plants: Array<{ model: string; x: number; z: number }>;
+  // Image used for the dining floor instead of the default checker.
+  floor?: string;
+  // Image used for the kitchen floor instead of the procedural tile texture.
+  kitchenFloor?: string;
+  // Low wall segment run along both sides of the kitchen.
+  halfWall?: string;
+  // Any other props, placed as they are.
+  extras?: Array<{ model: string; x: number; z: number; turn?: number; scale?: number }>;
 }
 
 export interface Tile {
@@ -53,6 +64,8 @@ export interface Level {
   // Orders that can come up in this kitchen.
   recipes: RecipeId[];
   decor: Decor;
+  // How many plates the kitchen owns; when set, plates run out and must be washed after each order.
+  plates?: number;
 }
 
 // One character per tile; S is a floor tile that also marks a spawn point.
@@ -68,14 +81,23 @@ const LEGEND: Record<string, Tile> = {
   O: { kind: "stove" },
   P: { kind: "plates" },
   W: { kind: "serve" },
+  R: { kind: "return" },
+  Q: { kind: "wash" },
   K: { kind: "sink" },
   F: { kind: "fridge" },
   V: { kind: "plant" },
 };
 
-export function parseLevel(name: string, target: number, recipes: RecipeId[], decor: Decor, rows: string[]): Level {
+export function parseLevel(
+  name: string,
+  target: number,
+  recipes: RecipeId[],
+  decor: Decor,
+  rows: string[],
+  plates?: number,
+): Level {
   const width = rows[0].length;
-  const level: Level = { name, width, height: rows.length, tiles: [], spawns: [], target, recipes, decor };
+  const level: Level = { name, width, height: rows.length, tiles: [], spawns: [], target, recipes, decor, plates };
   rows.forEach((row, tz) => {
     if (row.length !== width) throw new Error(`Level row ${tz} has the wrong width`);
     [...row].forEach((char, tx) => {
@@ -159,7 +181,46 @@ export const LEVELS: Level[] = [
     "The Pass",
     80,
     ["lettuce_salad", "salad", "soup", "onion_soup"],
-    { sink: "sink_industrial", fridge: "fridge_pro", plants: ["plant_bamboo", "plant_tropical"] },
+    {
+      sink: "sink_industrial",
+      fridge: "fridge_pro",
+      plants: ["plant_bamboo", "plant_tropical"],
+      room: {
+        backWall: [
+          "wall_brick",
+          "wall_window",
+          "wall_brick",
+          "wall-dressing-panel",
+          "wall_brick",
+          "wall_window",
+          "wall_brick",
+        ],
+        outerWall: "wall_brick",
+        sideWalls: ["wall_window", "wall_brick"],
+        margin: 6,
+        floor: "/textures/customer-floor.svg",
+        kitchenFloor: "/textures/kitchen-floor-checker.svg",
+        halfWall: "kitchen-halfwall-brick",
+        tables: [
+          { model: "dining-set-gingham", x: -3.6, z: 1.5, guests: ["guest_coral", "guest_blue", "", "guest_mint"] },
+          { model: "dining-set-gingham", x: -3.6, z: 4.3, guests: ["guest_mustard", "", "guest_coral", ""] },
+          { model: "dining-set-gingham", x: -3.6, z: 7.1, guests: ["", "guest_blue", "guest_mint", ""] },
+          { model: "dining-set-gingham", x: 16.6, z: 1.5, guests: ["guest_mustard", "guest_coral", "", "guest_blue"] },
+          { model: "dining-set-gingham", x: 16.6, z: 4.3, guests: ["guest_mint", "", "guest_blue", ""] },
+          { model: "dining-set-gingham", x: 16.6, z: 7.1, guests: ["", "guest_coral", "guest_mustard", ""] },
+        ],
+        plants: [
+          { model: "plant_pink", x: -5.7, z: 0.5 },
+          { model: "plant_blossom", x: 18.7, z: 0.5 },
+          { model: "plant_tropical", x: -5.7, z: 8.1 },
+          { model: "plant_bamboo", x: 18.7, z: 8.1 },
+        ],
+        extras: [
+          { model: "dining-detail-pack", x: 2.2, z: 10.1, scale: 1.15 },
+          { model: "dining-detail-pack", x: 10.8, z: 10.1, scale: 1.15 },
+        ],
+      },
+    },
     [
       "F#T#L#N#KP##V",
       "#S....#....S#",
@@ -171,5 +232,50 @@ export const LEVELS: Level[] = [
       "#S....#....SW",
       "V##X#########",
     ],
+  ),
+  // Three rooms in a zigzag (pantry, stoves, pass) and only four plates, so somebody has to wash up.
+  parseLevel(
+    "Rush Hour",
+    70,
+    ["lettuce_salad", "salad", "soup", "onion_soup"],
+    {
+      sink: "sink_single",
+      fridge: "fridge_retro",
+      plants: ["plant_blossom", "plant_pink"],
+      room: {
+        backWall: Array.from({ length: 7 }, () => "wall-dressing-panel"),
+        outerWall: "wall_brick",
+        sideWalls: ["wall_brick", "wall_window"],
+        margin: 6,
+        floor: "/textures/customer-floor.svg",
+        halfWall: "kitchen-halfwall-brick",
+        tables: [
+          { model: "dining-set-gingham", x: -3.5, z: 2.3, guests: ["guest_mint", "guest_coral", "", "guest_blue"] },
+          { model: "dining-set-gingham", x: -3.5, z: 6.6, guests: ["guest_mustard", "", "guest_coral", ""] },
+          { model: "dining-set-gingham", x: 16.5, z: 2.3, guests: ["guest_blue", "guest_mustard", "guest_mint", ""] },
+          { model: "dining-set-gingham", x: 16.5, z: 6.6, guests: ["", "guest_coral", "", "guest_mint"] },
+        ],
+        plants: [
+          { model: "plant_tropical", x: -5.7, z: 0.5 },
+          { model: "plant_bamboo", x: 18.7, z: 0.5 },
+        ],
+        extras: [
+          { model: "dining-detail-pack", x: 2.4, z: 10.3, scale: 1.3 },
+          { model: "dining-detail-pack", x: 10.8, z: 10.3, scale: 1.3 },
+        ],
+      },
+    },
+    [
+      "VTLN#OO###PFV",
+      "#.S.#.......#",
+      "#...B...#...#",
+      "#...B.S.#.S.W",
+      "#...#...#...W",
+      "#...#...Q...#",
+      "#...#.S.#...#",
+      "#.......#...#",
+      "V#####X###R#V",
+    ],
+    4,
   ),
 ];

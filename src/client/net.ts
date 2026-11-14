@@ -31,7 +31,8 @@ function clientId(): string {
 // Opens the room socket and keeps retrying, backing off, while the tab is open.
 export function connectRoom(code: string, handlers: RoomHandlers): RoomConnection {
   const scheme = location.protocol === "https:" ? "wss" : "ws";
-  const url = `${scheme}://${location.host}/ws/${code}?cid=${clientId()}`;
+  const level = new URLSearchParams(location.search).get("level");
+  const url = `${scheme}://${location.host}/ws/${code}?cid=${clientId()}${level ? `&level=${encodeURIComponent(level)}` : ""}`;
   // `?lag=200` adds that many ms of fake round-trip delay, for testing netcode locally.
   const lag = Math.max(0, Number(new URLSearchParams(location.search).get("lag")) || 0) / 2;
   const delayed = (run: () => void) => (lag > 0 ? setTimeout(run, lag) : run());

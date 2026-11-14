@@ -1,5 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import { MAX_PLAYERS, ROOM_CODE_PATTERN } from "../shared/constants";
+import { LEVELS } from "../shared/level";
 import {
   CLOSE_REPLACED,
   CLOSE_ROOM_FULL,
@@ -9,6 +10,7 @@ import {
 } from "../shared/protocol";
 import {
   addPlayer,
+  chooseLevel,
   createGame,
   freePlayerSlot,
   IDLE_INPUT,
@@ -78,7 +80,13 @@ export class Room extends DurableObject<Env> {
     if (request.headers.get("Upgrade") !== "websocket") {
       return new Response("Expected WebSocket", { status: 426 });
     }
-    const requested = new URL(request.url).searchParams.get("cid") ?? "";
+    const params = new URL(request.url).searchParams;
+    // `?level=3` on the first connection opens a fresh room in that kitchen, for trying a level directly.
+    const level = Number(params.get("level"));
+    if (this.seats.size === 0 && this.game.phase === "waiting" && Number.isInteger(level) && level >= 1 && level <= LEVELS.length) {
+      this.game = createGame(level - 1, Date.now(), true);
+    }
+    const requested = params.get("cid") ?? "";
     const cid = CID_PATTERN.test(requested) ? requested : crypto.randomUUID();
     const conn = this.nextConn++;
     const pair = new WebSocketPair();
@@ -133,6 +141,8 @@ export class Room extends DurableObject<Env> {
     } else if (message.type === "interact") {
       seat.input.interact = true;
       seat.input.aim = tileOrNull(message.aim);
+    } else if (message.type === "level") {
+      chooseLevel(this.game, Number(message.level));
     } else if (message.type === "start") {
       startRound(this.game);
     } else if (message.type === "ping" && typeof message.t === "number") {

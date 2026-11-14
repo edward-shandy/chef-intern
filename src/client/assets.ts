@@ -10,6 +10,8 @@ const MODEL_NAMES = [
   "pot_B_stew",
   "stew_bowl",
   "plate",
+  "plate_dirty",
+  "kitchencounter_sink",
   "food_stew",
   "crate_tomatoes",
   "crate_lettuce",

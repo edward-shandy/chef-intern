@@ -23,6 +23,9 @@ const ROUND_SECONDS = 180;
 const EXPIRED_PENALTY = 10;
 const MAX_TIP = 10;
 const RESTART_DELAY = 3;
+const WASH_SECONDS = 2;
+// How long a served plate stays with the customer before it comes back dirty.
+const RETURN_SECONDS = 6;
 
 // Pacing by number of chefs, tuned so one person alone can keep up: each recipe's
 // time limit is scaled by ORDER_TIME_SCALE, a new order arrives every ORDER_INTERVAL
@@ -38,7 +41,9 @@ export type Item =
   | { type: "ingredient"; kind: Ingredient; chop: number }
   | { type: "plate"; contents: DishPart[] }
   // A pot holds up to POT_CAPACITY chopped pieces of one kind of ingredient.
-  | { type: "pot"; kind: Ingredient | null; contents: number; cook: number };
+  | { type: "pot"; kind: Ingredient | null; contents: number; cook: number }
+  // A used plate: it can be carried and put down, but only the wash sink makes it useful again.
+  | { type: "dirty" };
 
 type Plate = Extract<Item, { type: "plate" }>;
 type Pot = Extract<Item, { type: "pot" }>;
@@ -72,6 +77,13 @@ export interface GameState {
   players: PlayerState[];
   // Items resting on solid tiles, keyed by tile index.
   tileItems: Record<number, Item>;
+  // Clean plates left on the stack, or null in kitchens where plates never run out.
+  plates: number | null;
+  // Dirty plates waiting at the return hatch, and the timers of plates still out with customers.
+  dirty: number;
+  returning: number[];
+  // The wash sink: plates waiting in it, plates already cleaned, and progress on the current one.
+  wash: { dirty: number; clean: number; progress: number };
   orders: Order[];
   score: number;
   // Score needed to clear this kitchen, for the largest crew seen this round.
@@ -121,6 +133,10 @@ export function createGame(level: number, seed: number, waiting = false): GameSt
     level,
     players: [],
     tileItems: startingItems(LEVELS[level]),
+    plates: LEVELS[level].plates ?? null,
+    dirty: 0,
+    returning: [],
+    wash: { dirty: 0, clean: 0, progress: 0 },
     orders: [],
     score: 0,
     target: LEVELS[level].target,
@@ -231,7 +247,7 @@ function combine(held: Item, resting: Item): "held" | "resting" | "both-stay" | 
   } else if (held.type === "plate") {
     if (resting.type === "ingredient" && isChopped(resting) && addToPlate(held, resting.kind)) return "resting";
     if (resting.type === "pot" && pour(resting, held)) return "both-stay";
-  } else {
+  } else if (held.type === "pot") {
     if (resting.type === "ingredient" && addToPot(held, resting)) return "resting";
     if (resting.type === "plate" && pour(held, resting)) return "both-stay";
   }
@@ -252,6 +268,14 @@ function faceTile(level: Level, player: PlayerState, tile: number): void {
   player.facing = Math.atan2((tile % level.width) + 0.5 - player.x, Math.floor(tile / level.width) + 0.5 - player.z);
 }
 
+// Takes a clean plate off the stack, which only fails in kitchens with a limited number of plates.
+function takePlate(state: GameState): boolean {
+  if (state.plates === null) return true;
+  if (state.plates === 0) return false;
+  state.plates -= 1;
+  return true;
+}
+
 function interact(level: Level, state: GameState, player: PlayerState, aim: number | null): void {
   const index = targetTile(level, player, aim);
   if (index === null) return;
@@ -267,6 +291,12 @@ function interact(level: Level, state: GameState, player: PlayerState, aim: numb
     } else if (tile.kind === "crate" && tile.dispenses) {
       player.held = { type: "ingredient", kind: tile.dispenses, chop: 0 };
     } else if (tile.kind === "plates") {
+      if (takePlate(state)) player.held = { type: "plate", contents: [] };
+    } else if (tile.kind === "return" && state.dirty > 0) {
+      state.dirty -= 1;
+      player.held = { type: "dirty" };
+    } else if (tile.kind === "wash" && state.wash.clean > 0) {
+      state.wash.clean -= 1;
       player.held = { type: "plate", contents: [] };
     }
     return;
@@ -276,15 +306,27 @@ function interact(level: Level, state: GameState, player: PlayerState, aim: numb
     // Pots and plates are kept and only emptied; loose food is thrown away.
     if (held.type === "pot") emptyPot(held);
     else if (held.type === "plate") held.contents = [];
-    else player.held = null;
+    else if (held.type === "ingredient") player.held = null;
   } else if (tile.kind === "serve") {
     if (held.type === "plate" && held.contents.length > 0) {
       serve(state, held);
       player.held = null;
+      if (state.plates !== null) state.returning.push(RETURN_SECONDS);
     }
   } else if (tile.kind === "plates") {
     // Chopped food can go straight onto a fresh plate from the stack.
-    if (held.type === "ingredient" && isChopped(held)) player.held = { type: "plate", contents: [held.kind] };
+    if (held.type === "ingredient" && isChopped(held)) {
+      if (takePlate(state)) player.held = { type: "plate", contents: [held.kind] };
+    } else if (held.type === "plate" && held.contents.length === 0 && state.plates !== null) {
+      // A clean plate nobody needs yet goes back on the stack.
+      state.plates += 1;
+      player.held = null;
+    }
+  } else if (tile.kind === "wash") {
+    if (held.type === "dirty") {
+      state.wash.dirty += 1;
+      player.held = null;
+    }
   } else if (resting) {
     const used = combine(held, resting);
     if (used === "held") player.held = null;
@@ -298,7 +340,21 @@ function interact(level: Level, state: GameState, player: PlayerState, aim: numb
 function chop(level: Level, state: GameState, player: PlayerState, aim: number | null, dt: number): void {
   if (player.held) return;
   const index = targetTile(level, player, aim);
-  if (index === null || level.tiles[index].kind !== "board") return;
+  if (index === null) return;
+  if (level.tiles[index].kind === "wash") {
+    // Holding the same button at the sink scrubs one waiting plate at a time.
+    if (state.wash.dirty === 0) return;
+    if (index === aim) faceTile(level, player, index);
+    player.chopping = true;
+    state.wash.progress += dt / WASH_SECONDS;
+    if (state.wash.progress >= 1) {
+      state.wash.progress = 0;
+      state.wash.dirty -= 1;
+      state.wash.clean += 1;
+    }
+    return;
+  }
+  if (level.tiles[index].kind !== "board") return;
   if (index === aim) faceTile(level, player, index);
   const item = state.tileItems[index];
   if (item?.type === "ingredient" && item.chop < 1) {
@@ -333,6 +389,14 @@ function updateOrders(level: Level, state: GameState, dt: number): void {
   const seconds = Math.round(RECIPES[recipe].seconds * ORDER_TIME_SCALE[crew]);
   state.orders.push({ id: state.nextOrderId++, recipe, timeLeft: seconds, timeTotal: seconds });
   state.nextOrderIn = ORDER_INTERVAL[crew];
+}
+
+// Switches the lobby to another kitchen; ignored once a round is under way.
+export function chooseLevel(state: GameState, level: number): void {
+  if (state.phase !== "waiting" || !LEVELS[level] || level === state.level) return;
+  const players = state.players;
+  Object.assign(state, createGame(level, state.seed, true));
+  for (const { id } of players) addPlayer(state, id);
 }
 
 // Ends the warm-up; anyone in the room may call it once everybody has arrived.
@@ -467,6 +531,10 @@ export function stepGame(state: GameState, inputs: Record<number, PlayerInput>, 
   }
 
   cookPots(level, state, dt);
+  // Plates that were served come back dirty once the customer has finished.
+  state.returning = state.returning.map((seconds) => seconds - dt);
+  state.dirty += state.returning.filter((seconds) => seconds <= 0).length;
+  state.returning = state.returning.filter((seconds) => seconds > 0);
   if (state.phase === "waiting") return;
   updateOrders(level, state, dt);
 

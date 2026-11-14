@@ -198,7 +198,21 @@ function floorTexture(level: Level, anisotropy: number): THREE.CanvasTexture {
 const WALL_SQUASH = 0.85;
 // Dining sets and guests are authored larger than the KayKit kitchen, so they are scaled to sit beside it.
 const DINING_SCALE = 0.78;
-const CHAIR_OFFSET = 0.82;
+// Where the chairs are around each dining set, in the set's own units; two-seaters are the default.
+const SEATS: Record<string, Array<[number, number]>> = {
+  "dining-set-gingham": [
+    [-1.22, 0],
+    [1.22, 0],
+    [0, -1.22],
+    [0, 1.22],
+  ],
+};
+const TWO_SEATS: Array<[number, number]> = [
+  [-0.82, 0],
+  [0.82, 0],
+];
+// The four-seat gingham set is much larger than the others, so it is scaled down further.
+const SET_SCALE: Record<string, number> = { "dining-set-gingham": 0.56 };
 const GUEST_SEAT_HEIGHT = 0.16;
 
 function diningFloorTexture(anisotropy: number): THREE.CanvasTexture {
@@ -231,10 +245,18 @@ export function animateGuests(room: THREE.Group, time: number, cheer: number): v
 export function createRoom(level: Level, anisotropy: number): THREE.Group {
   const room = new THREE.Group();
   const { width, height } = level;
+  const plan = level.decor.room;
+  const floorMap = plan?.kitchenFloor ? new THREE.TextureLoader().load(plan.kitchenFloor) : floorTexture(level, anisotropy);
+  floorMap.colorSpace = THREE.SRGBColorSpace;
+  floorMap.anisotropy = anisotropy;
+  if (plan?.kitchenFloor) {
+    floorMap.wrapS = floorMap.wrapT = THREE.RepeatWrapping;
+    floorMap.repeat.set(width / 4, height / 4);
+  }
 
   const floor = mesh(
     new THREE.PlaneGeometry(width, height),
-    new THREE.MeshStandardMaterial({ map: floorTexture(level, anisotropy), roughness: 0.5 }),
+    new THREE.MeshStandardMaterial({ map: floorMap, roughness: 0.64 }),
     width / 2,
     0,
     height / 2,
@@ -255,14 +277,17 @@ export function createRoom(level: Level, anisotropy: number): THREE.Group {
   room.add(deck, floor);
 
   const solid = new THREE.Group();
-  const plan = level.decor.room;
   const guests: THREE.Object3D[] = [];
   if (plan) {
     // A tiled dining floor surrounds the kitchen and sits just under its own floor.
     const depth = height + 3.6;
     const span = width + plan.margin * 2;
-    const tiles = diningFloorTexture(anisotropy);
-    tiles.repeat.set(span / 2, depth / 2);
+    const tiles = plan.floor ? new THREE.TextureLoader().load(plan.floor) : diningFloorTexture(anisotropy);
+    tiles.colorSpace = THREE.SRGBColorSpace;
+    tiles.wrapS = tiles.wrapT = THREE.RepeatWrapping;
+    tiles.anisotropy = anisotropy;
+    // The default checker is two tiles per repeat; a supplied image is stretched over four.
+    tiles.repeat.set(span / (plan.floor ? 4 : 2), depth / (plan.floor ? 4 : 2));
     const dining = mesh(
       new THREE.PlaneGeometry(span, depth),
       new THREE.MeshStandardMaterial({ map: tiles, roughness: 0.6 }),
@@ -302,19 +327,42 @@ export function createRoom(level: Level, anisotropy: number): THREE.Group {
       const furniture = decoration(table.model);
       if (!furniture) continue;
       set.add(furniture);
+      const seats = SEATS[table.model] ?? TWO_SEATS;
       table.guests.forEach((name, seat) => {
-        const guest = name ? decoration(name) : null;
+        const guest = name && seats[seat] ? decoration(name) : null;
         if (!guest) return;
-        const side = seat === 0 ? -1 : 1;
-        guest.position.set(side * CHAIR_OFFSET, GUEST_SEAT_HEIGHT, 0);
-        guest.rotation.y = (-side * Math.PI) / 2;
+        const [seatX, seatZ] = seats[seat];
+        guest.position.set(seatX, GUEST_SEAT_HEIGHT, seatZ);
+        // Guests face the middle of their table.
+        guest.rotation.y = Math.atan2(-seatX, -seatZ);
         guest.userData.restY = GUEST_SEAT_HEIGHT;
         guests.push(guest);
         set.add(guest);
       });
       set.position.set(table.x, 0, table.z);
-      set.scale.setScalar(DINING_SCALE);
+      set.scale.setScalar(SET_SCALE[table.model] ?? DINING_SCALE);
       solid.add(set);
+    }
+    for (const extra of plan.extras ?? []) {
+      const item = decoration(extra.model);
+      if (!item) continue;
+      item.position.set(extra.x, 0, extra.z);
+      item.rotation.y = extra.turn ?? 0;
+      item.scale.setScalar(extra.scale ?? 1);
+      solid.add(item);
+    }
+    // A low wall down each side frames the kitchen without hiding anything from the camera.
+    if (plan.halfWall) {
+      for (let z = 1; z < height; z += 2) {
+        for (const x of [-0.42, width + 0.42]) {
+          const wall = decoration(plan.halfWall);
+          if (!wall) continue;
+          wall.position.set(x, 0, Math.min(z, height - 1));
+          wall.rotation.y = Math.PI / 2;
+          wall.scale.set(0.96, 0.7, 1);
+          solid.add(wall);
+        }
+      }
     }
     for (const spot of plan.plants) {
       const plant = decoration(spot.model);
@@ -451,6 +499,8 @@ export function createItem(item: Item): THREE.Group {
       }
       if (item.contents.includes("onion")) parts.add(part(CHOPPED.onion, 0, hasLettuce ? 0.15 : 0.08, 0, 0.8, 0.5));
     }
+  } else if (item.type === "dirty") {
+    parts.add(part("plate_dirty"));
   } else {
     const ruined = item.cook >= BURN_AT;
     const full = item.contents >= POT_CAPACITY;
@@ -485,6 +535,7 @@ export function createItem(item: Item): THREE.Group {
 export function itemSignature(item: Item): string {
   if (item.type === "ingredient") return `i:${item.kind}:${isChopped(item)}`;
   if (item.type === "plate") return `p:${item.contents.join("+")}`;
+  if (item.type === "dirty") return "d";
   const stage = item.cook >= BURN_AT ? "burnt" : item.cook >= 1 ? "cooked" : "raw";
   return `k:${item.kind}:${item.contents}:${stage}`;
 }
@@ -533,6 +584,8 @@ const STATION_LABELS: Partial<Record<TileKind, string>> = {
   stove: "COOK",
   plates: "PLATES",
   serve: "SERVE",
+  return: "DIRTY",
+  wash: "WASH",
   trash: "TRASH",
 };
 
@@ -573,6 +626,12 @@ export interface Stations {
   group: THREE.Group;
   // Ring of flames per stove tile, shown while a pot cooks on it.
   flames: Map<number, THREE.Group>;
+  // Plates drawn one by one so the scene can show exactly as many as the game says are there.
+  plateStack: THREE.Object3D[];
+  dirtyPile: THREE.Object3D[];
+  sinkDirty: THREE.Object3D[];
+  sinkClean: THREE.Object3D[];
+  washTile: number | null;
   // Middle of the serving windows, where score pop-ups appear.
   serveCentre: THREE.Vector3;
 }
@@ -583,6 +642,20 @@ export function createStations(level: Level): Stations {
   const labels = new THREE.Group();
   const unshadowed = new THREE.Group();
   const flames = new Map<number, THREE.Group>();
+  const plateStack: THREE.Object3D[] = [];
+  const dirtyPile: THREE.Object3D[] = [];
+  const sinkDirty: THREE.Object3D[] = [];
+  const sinkClean: THREE.Object3D[] = [];
+  let washTile: number | null = null;
+  // A pile of plates on a station, hidden until the scene reveals as many as are really there.
+  const pile = (into: THREE.Object3D[], name: ModelName, count: number, x: number, y: number, z: number, scale: number) => {
+    for (let i = 0; i < count; i++) {
+      const plate = prop(name, x, y + i * 0.09 * scale, z, i * 0.7, scale);
+      plate.visible = false;
+      into.push(plate);
+      group.add(plate);
+    }
+  };
   const serveCentre = new THREE.Vector3();
   let serveTiles = 0;
   let plants = 0;
@@ -629,6 +702,8 @@ export function createStations(level: Level): Stations {
       group.add(fixture);
     } else if (tile.kind === "stove") {
       group.add(prop("stove_single", x, 0, z, turn));
+    } else if (tile.kind === "wash") {
+      group.add(prop("kitchencounter_sink", x, 0, z, turn));
     } else {
       counters.push({ x, z, turn });
     }
@@ -658,6 +733,20 @@ export function createStations(level: Level): Stations {
       group.add(prop(CRATES[tile.dispenses], x, top, z, turn, 0.43));
     } else if (tile.kind === "board") {
       group.add(prop("cuttingboard", x, top, z, turn));
+    } else if (tile.kind === "plates" && level.plates) {
+      // A kitchen with a limited number of plates shows the real stack instead of a full rack.
+      group.add(mesh(rounded(0.86, 0.04, 0.86, 0.02), mat(COLORS.tray, 0.5), x, top + 0.02, z));
+      pile(plateStack, "plate", level.plates, x, top + 0.04, z, MODEL_SCALE);
+    } else if (tile.kind === "return") {
+      group.add(mesh(rounded(0.86, 0.04, 0.86, 0.02), mat(0x8a5fa8, 0.5), x, top + 0.02, z));
+      pile(dirtyPile, "plate_dirty", level.plates ?? 0, x, top + 0.04, z, MODEL_SCALE);
+    } else if (tile.kind === "wash") {
+      washTile = index;
+      // Dirty plates wait on one side of the basin and clean ones stack up on the other.
+      const sideX = Math.cos(turn) * 0.3;
+      const sideZ = -Math.sin(turn) * 0.3;
+      pile(sinkDirty, "plate_dirty", level.plates ?? 0, x - sideX, top + 0.02, z - sideZ, 0.3);
+      pile(sinkClean, "plate", level.plates ?? 0, x + sideX, top + 0.02, z + sideZ, 0.3);
     } else if (tile.kind === "plates") {
       group.add(prop("dishrack_plates", x, top, z, turn + Math.PI / 2));
     } else if (tile.kind === "trash") {
@@ -714,7 +803,7 @@ export function createStations(level: Level): Stations {
   group.add(instanced);
   shadowed(group);
   group.add(labels, unshadowed);
-  return { group, flames, serveCentre };
+  return { group, flames, serveCentre, plateStack, dirtyPile, sinkDirty, sinkClean, washTile };
 }
 
 // ---------------------------------------------------------------- effects

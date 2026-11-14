@@ -25,7 +25,15 @@ import {
 } from "./models";
 import { animateChef, createChef, type ChefRig } from "./chef";
 
-const EMPTY_STATE = { players: [], tileItems: {}, score: 0, delivered: 0 } as unknown as GameState;
+const EMPTY_STATE = {
+  players: [],
+  tileItems: {},
+  score: 0,
+  delivered: 0,
+  plates: null,
+  dirty: 0,
+  wash: { dirty: 0, clean: 0, progress: 0 },
+} as unknown as GameState;
 // Aimed a little behind the kitchen centre, which leaves the top of the screen free for order tickets.
 const CAMERA_HOME = new THREE.Vector3(0, 18, 12.2);
 const CAMERA_TARGET = new THREE.Vector3(0, 0, -0.7);
@@ -160,6 +168,8 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
     bars.clear();
     potFx.clear();
     world.remove(room, stations.group);
+    washBar?.group.removeFromParent();
+    washBar = null;
     level = next;
     stations = createStations(level);
     room = createRoom(level, anisotropy);
@@ -184,6 +194,27 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
     popping.add(next);
     parent.add(next);
     return { signature, mesh: next };
+  };
+
+  // Shows as many plates on the stack, the return hatch and the sink as the game says are there.
+  let washBar: ProgressBar | null = null;
+  const syncDishes = (state: GameState) => {
+    const reveal = (pile: THREE.Object3D[], count: number) => pile.forEach((plate, i) => (plate.visible = i < count));
+    reveal(stations.plateStack, state.plates ?? 0);
+    reveal(stations.dirtyPile, state.dirty);
+    reveal(stations.sinkDirty, state.wash.dirty);
+    reveal(stations.sinkClean, state.wash.clean);
+    if (stations.washTile === null) return;
+    if (!washBar) {
+      washBar = createProgressBar();
+      const { x, z } = tileCentre(stations.washTile);
+      washBar.group.position.set(x, WORKTOP_Y + 0.75, z);
+      washBar.fill.material.color.setHex(0x5fb8e8);
+      world.add(washBar.group);
+    }
+    washBar.group.visible = state.wash.progress > 0;
+    washBar.fill.scale.x = Math.max(0.001, state.wash.progress);
+    washBar.fill.position.x = (-BAR_WIDTH * (1 - state.wash.progress)) / 2;
   };
 
   const syncRestingItems = (state: GameState, time: number) => {
@@ -369,6 +400,7 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
         const { state, localId, target, pointed } = onFrame();
         const shown = state ?? EMPTY_STATE;
         syncRestingItems(shown, time);
+        syncDishes(shown);
         syncChefs(shown, localId, dt);
         syncMarkers(target, pointed, time);
         if (state) syncPopups(state, dt);
