@@ -44,6 +44,8 @@ export interface RoomDecor {
   kitchenFloor?: string;
   // Low wall segment run along both sides of the kitchen.
   halfWall?: string;
+  // A small street frontage outside one side of the restaurant.
+  street?: { side: "right" };
   // Any other props, placed as they are.
   extras?: Array<{ model: string; x: number; z: number; turn?: number; scale?: number }>;
 }
@@ -201,19 +203,17 @@ export const LEVELS: Level[] = [
         floor: "/textures/customer-floor.svg",
         kitchenFloor: "/textures/kitchen-floor-checker.svg",
         halfWall: "kitchen-halfwall-brick",
+        street: { side: "right" },
         tables: [
           { model: "dining-set-gingham", x: -3.6, z: 1.5, guests: ["guest_coral", "guest_blue", "", "guest_mint"] },
           { model: "dining-set-gingham", x: -3.6, z: 4.3, guests: ["guest_mustard", "", "guest_coral", ""] },
           { model: "dining-set-gingham", x: -3.6, z: 7.1, guests: ["", "guest_blue", "guest_mint", ""] },
-          { model: "dining-set-gingham", x: 16.6, z: 1.5, guests: ["guest_mustard", "guest_coral", "", "guest_blue"] },
-          { model: "dining-set-gingham", x: 16.6, z: 4.3, guests: ["guest_mint", "", "guest_blue", ""] },
-          { model: "dining-set-gingham", x: 16.6, z: 7.1, guests: ["", "guest_coral", "guest_mustard", ""] },
         ],
         plants: [
           { model: "plant_pink", x: -5.7, z: 0.5 },
-          { model: "plant_blossom", x: 18.7, z: 0.5 },
-          { model: "plant_tropical", x: -5.7, z: 8.1 },
-          { model: "plant_bamboo", x: 18.7, z: 8.1 },
+          { model: "plant_blossom", x: -5.7, z: 8.1 },
+          { model: "plant_tropical", x: -2.0, z: 0.5 },
+          { model: "plant_bamboo", x: -2.0, z: 8.1 },
         ],
         extras: [
           { model: "dining-detail-pack", x: 2.2, z: 10.1, scale: 1.15 },

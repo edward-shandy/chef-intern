@@ -4,6 +4,7 @@ import { isFixture, type Level } from "../shared/level";
 import type { GameState, Item } from "../shared/sim";
 import {
   animateGuests,
+  animateStreet,
   animateSteam,
   BAR_WIDTH,
   COLORS,
@@ -406,6 +407,7 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
         if (state) syncPopups(state, dt);
         cheer = Math.max(0, cheer - dt / 1.2);
         animateGuests(room, time, cheer);
+        animateStreet(room, time);
         for (const object of popping) {
           const scale = object.scale.x + (1 - object.scale.x) * (1 - Math.exp(-20 * dt));
           object.scale.setScalar(scale);

@@ -241,6 +241,226 @@ export function animateGuests(room: THREE.Group, time: number, cheer: number): v
   });
 }
 
+interface StreetMover {
+  group: THREE.Group;
+  x: number;
+  phase: number;
+  speed: number;
+  direction: 1 | -1;
+  legs?: THREE.Group[];
+  arms?: THREE.Group[];
+}
+
+interface StreetView {
+  start: number;
+  length: number;
+  cars: StreetMover[];
+  pedestrians: StreetMover[];
+}
+
+function createStreetCar(bodyColour: number): THREE.Group {
+  const car = new THREE.Group();
+  const paint = mat(bodyColour, 0.38, 0.08);
+  const glass = mat(0x8db5bd, 0.22, 0.12);
+  const wheel = mat(0x24262a, 0.9);
+  car.add(
+    mesh(rounded(0.78, 0.3, 1.55, 0.1), paint, 0, 0.39, 0),
+    mesh(rounded(0.58, 0.31, 0.78, 0.12), paint, 0, 0.68, -0.02),
+    mesh(rounded(0.51, 0.22, 0.68, 0.08), glass, 0, 0.70, -0.02),
+    mesh(box(0.18, 0.09, 0.035), mat(0xffedc3, 0.32), -0.23, 0.43, 0.78),
+    mesh(box(0.18, 0.09, 0.035), mat(0xffedc3, 0.32), 0.23, 0.43, 0.78),
+    mesh(box(0.16, 0.08, 0.035), mat(0xe84e42, 0.4), -0.23, 0.43, -0.78),
+    mesh(box(0.16, 0.08, 0.035), mat(0xe84e42, 0.4), 0.23, 0.43, -0.78),
+  );
+  for (const x of [-0.4, 0.4]) {
+    for (const z of [-0.48, 0.48]) {
+      const tire = mesh(cylinder(0.13, 0.13, 0.12, 10), wheel, x, 0.22, z);
+      tire.rotation.z = Math.PI / 2;
+      car.add(tire);
+    }
+  }
+  shadowed(car);
+  return car;
+}
+
+function createPedestrian(shirt: number, trousers: number, skin: number, hair: number) {
+  const person = new THREE.Group();
+  const limbs = mat(trousers, 0.86);
+  const top = mat(shirt, 0.78);
+  const skinMaterial = mat(skin, 0.88);
+  const hairMaterial = mat(hair, 0.9);
+  person.add(
+    mesh(new THREE.CylinderGeometry(0.19, 0.23, 0.48, 8), top, 0, 0.70, 0),
+    mesh(ball(0.17, 10), skinMaterial, 0, 1.07, 0.035),
+    mesh(ball(0.175, 8), hairMaterial, 0, 1.15, -0.035),
+  );
+  const legs: THREE.Group[] = [];
+  const arms: THREE.Group[] = [];
+  for (const side of [-1, 1]) {
+    const leg = new THREE.Group();
+    leg.position.set(side * 0.105, 0.47, 0);
+    leg.add(mesh(box(0.12, 0.42, 0.14), limbs, 0, -0.20, 0));
+    leg.add(mesh(rounded(0.15, 0.09, 0.23, 0.035), mat(0x473a37, 0.86), 0, -0.42, 0.035));
+    person.add(leg);
+    legs.push(leg);
+
+    const arm = new THREE.Group();
+    arm.position.set(side * 0.23, 0.84, 0);
+    arm.add(mesh(box(0.11, 0.36, 0.12), top, 0, -0.17, 0));
+    arm.add(mesh(ball(0.06, 8), skinMaterial, 0, -0.37, 0.015));
+    person.add(arm);
+    arms.push(arm);
+  }
+  shadowed(person);
+  return { group: person, legs, arms };
+}
+
+function createStreet(level: Level, anisotropy: number): { group: THREE.Group; view: StreetView } | null {
+  const plan = level.decor.room;
+  if (!plan?.street || plan.street.side !== "right") return null;
+
+  const group = new THREE.Group();
+  const { width, height } = level;
+  const start = -2.6;
+  const length = height + 5.2;
+  const sidewalkWidth = 1.4;
+  const walkX = width + sidewalkWidth / 2;
+  const roadX = width + sidewalkWidth + 0.12;
+  const roadWidth = Math.max(3.6, plan.margin - sidewalkWidth - 0.35);
+  const roadEnd = roadX + roadWidth;
+  const centreZ = (start + (height + 2.6)) / 2;
+  const roadLength = length;
+
+  const sidewalkMaterial = mat(0xb9b3a5, 0.92);
+  const asphalt = canvasTexture(128, 256, (ctx) => {
+    ctx.fillStyle = "#484a50";
+    ctx.fillRect(0, 0, 128, 256);
+    for (let i = 0; i < 130; i++) {
+      const x = (i * 47) % 128;
+      const z = (i * 83) % 256;
+      ctx.fillStyle = i % 3 === 0 ? "rgba(230,220,205,.07)" : "rgba(18,20,24,.10)";
+      ctx.fillRect(x, z, i % 4 === 0 ? 2 : 1, 1);
+    }
+  });
+  asphalt.wrapS = asphalt.wrapT = THREE.RepeatWrapping;
+  asphalt.repeat.set(1, roadLength / 5);
+  asphalt.anisotropy = anisotropy;
+  const asphaltMaterial = new THREE.MeshStandardMaterial({ map: asphalt, roughness: 0.96 });
+  const horizontal = (w: number, d: number, material: THREE.Material, x: number, z: number, y: number) => {
+    const surface = mesh(new THREE.PlaneGeometry(w, d), material, x, y, z);
+    surface.rotation.x = -Math.PI / 2;
+    surface.receiveShadow = true;
+    return surface;
+  };
+
+  group.add(
+    horizontal(sidewalkWidth, roadLength, sidewalkMaterial, walkX, centreZ, -0.002),
+    horizontal(roadWidth, roadLength, asphaltMaterial, roadX + roadWidth / 2, centreZ, 0.002),
+  );
+
+  // Slab seams and tactile curb edges give the sidewalk a clear scale beside the road.
+  for (let z = start + 0.55; z < height + 2; z += 0.9) {
+    group.add(mesh(box(sidewalkWidth - 0.08, 0.008, 0.018), mat(0x99958b, 1), walkX, 0.008, z));
+  }
+  const curb = mat(0xd5c9ad, 0.8);
+  group.add(
+    mesh(box(0.14, 0.11, roadLength), curb, roadX - 0.08, 0.055, centreZ),
+    mesh(box(0.14, 0.11, roadLength), curb, roadEnd + 0.06, 0.055, centreZ),
+  );
+
+  // Broken center line, thin edge lines, and a short crosswalk by the restaurant frontage.
+  const lanePaint = mat(0xe3cf91, 0.72);
+  const whitePaint = mat(0xe5e2d8, 0.74);
+  const middleX = roadX + roadWidth / 2;
+  for (let z = start + 0.5; z < height + 2; z += 1.2) {
+    group.add(mesh(box(0.055, 0.012, 0.62), lanePaint, middleX, 0.014, z));
+  }
+  group.add(
+    mesh(box(0.035, 0.012, roadLength - 0.2), whitePaint, roadX + 0.2, 0.013, centreZ),
+    mesh(box(0.035, 0.012, roadLength - 0.2), whitePaint, roadEnd - 0.2, 0.013, centreZ),
+  );
+  const crossZ = height + 0.35;
+  for (let x = roadX + 0.32; x < roadEnd - 0.25; x += 0.48) {
+    group.add(mesh(box(0.25, 0.014, 0.72), whitePaint, x, 0.015, crossZ));
+  }
+
+  // A few storm drains and street lamps make the street read as a place rather than a flat strip.
+  const metal = mat(0x4d5055, 0.58, 0.45);
+  for (const z of [0.8, 5.4, 10]) {
+    group.add(mesh(box(0.42, 0.018, 0.22), metal, roadEnd - 0.58, 0.018, z));
+    const x = roadEnd - 0.25;
+    group.add(
+      mesh(cylinder(0.045, 0.07, 2.65, 8), metal, x, 1.325, z - 1.2),
+      mesh(box(0.48, 0.07, 0.08), metal, x - 0.20, 2.56, z - 1.2),
+      mesh(ball(0.10, 8), mat(0xffd48a, 0.4), x - 0.38, 2.53, z - 1.2),
+    );
+  }
+
+  const cars: StreetMover[] = [];
+  const carColours = [0x3f91b7, 0xd95743, 0xe0b34c, 0x638b60];
+  const lanes = [roadX + roadWidth * 0.28, roadX + roadWidth * 0.72];
+  for (let i = 0; i < 4; i++) {
+    const direction: 1 | -1 = i % 2 === 0 ? 1 : -1;
+    const car = createStreetCar(carColours[i]);
+    car.rotation.y = direction > 0 ? 0 : Math.PI;
+    group.add(car);
+    cars.push({
+      group: car,
+      x: lanes[direction > 0 ? 0 : 1],
+      phase: i * (length / 4) + (i % 2) * 1.1,
+      speed: 1.0 + (i % 3) * 0.24,
+      direction,
+    });
+  }
+
+  const pedestrians: StreetMover[] = [];
+  const outfits = [
+    [0xd65c45, 0x343d56, 0xd9a77e, 0x4b3021],
+    [0x3f8396, 0x493b34, 0x8d5e3f, 0x24201d],
+    [0xd19b42, 0x465f45, 0xf0c49a, 0x5b3c2c],
+    [0x8b689c, 0x393c50, 0xc78362, 0x34241e],
+  ];
+  for (let i = 0; i < outfits.length; i++) {
+    const [shirt, trousers, skin, hair] = outfits[i];
+    const person = createPedestrian(shirt, trousers, skin, hair);
+    group.add(person.group);
+    pedestrians.push({
+      group: person.group,
+      legs: person.legs,
+      arms: person.arms,
+      x: walkX + (i % 2 ? 0.22 : -0.22),
+      phase: i * (length / outfits.length),
+      speed: 0.48 + i * 0.09,
+      direction: i % 2 === 0 ? 1 : -1,
+    });
+  }
+
+  group.traverse((child) => {
+    if (child instanceof THREE.Mesh) {
+      child.castShadow = child.position.y > 0.05;
+      child.receiveShadow = true;
+    }
+  });
+  const view: StreetView = { start, length, cars, pedestrians };
+  return { group, view };
+}
+
+export function animateStreet(room: THREE.Group, time: number): void {
+  const street = room.userData.street as StreetView | undefined;
+  if (!street) return;
+  for (const vehicle of street.cars) {
+    const distance = (time * vehicle.speed + vehicle.phase) % street.length;
+    vehicle.group.position.set(vehicle.x, 0, street.start + (vehicle.direction > 0 ? distance : street.length - distance));
+  }
+  street.pedestrians.forEach((person, i) => {
+    const distance = (time * person.speed + person.phase) % street.length;
+    person.group.position.set(person.x, 0, street.start + (person.direction > 0 ? distance : street.length - distance));
+    person.group.rotation.y = person.direction > 0 ? 0 : Math.PI;
+    person.legs?.forEach((leg, side) => (leg.rotation.x = Math.sin(time * 5 + i + side * Math.PI) * 0.38));
+    person.arms?.forEach((arm, side) => (arm.rotation.x = Math.sin(time * 5 + i + Math.PI + side * Math.PI) * 0.28));
+  });
+}
+
 // Floor, a wooden deck around it, the restaurant or a plain wall behind, and lamps over the back counters.
 export function createRoom(level: Level, anisotropy: number): THREE.Group {
   const room = new THREE.Group();
@@ -278,6 +498,8 @@ export function createRoom(level: Level, anisotropy: number): THREE.Group {
 
   const solid = new THREE.Group();
   const guests: THREE.Object3D[] = [];
+  const street = createStreet(level, anisotropy);
+  if (street) room.add(street.group);
   if (plan) {
     // A tiled dining floor surrounds the kitchen and sits just under its own floor.
     const depth = height + 3.6;
@@ -387,6 +609,7 @@ export function createRoom(level: Level, anisotropy: number): THREE.Group {
     }
   }
   room.userData.guests = guests;
+  if (street) room.userData.street = street.view;
 
   // Pendant lamps hang in front of the wall and pool warm light on the back counters.
   const shade = new THREE.MeshStandardMaterial({
