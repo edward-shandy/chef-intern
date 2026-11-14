@@ -109,6 +109,22 @@ function playRoom(roomCode: string): void {
         : STATUS_TEXT[connection];
   };
 
+  // The name is remembered on this device and sent again whenever the seat is taken.
+  const nameInput = element<HTMLInputElement>("#chef-name");
+  try {
+    nameInput.value = localStorage.getItem("chef-intern-name") ?? "";
+  } catch {
+    // Private windows may refuse storage; the name then just starts empty.
+  }
+  nameInput.addEventListener("input", () => {
+    room.send({ type: "name", name: nameInput.value });
+    try {
+      localStorage.setItem("chef-intern-name", nameInput.value);
+    } catch {
+      // Nothing to do: the name still works for this visit.
+    }
+  });
+
   const room = connectRoom(roomCode, {
     onState: (next) => {
       connection = next;
@@ -123,6 +139,7 @@ function playRoom(roomCode: string): void {
       const now = performance.now();
       if (message.type === "welcome") {
         world.welcome(message.id, now);
+        if (nameInput.value.trim()) room.send({ type: "name", name: nameInput.value });
         // Forces whatever is held down right now to be sent again under the new session.
         Object.assign(sent, { moveX: 0, moveZ: 0, use: false, aim: null, dash: false });
       } else if (message.type === "pong") {
@@ -148,6 +165,11 @@ function playRoom(roomCode: string): void {
   };
   element("#start").addEventListener("click", start);
   window.addEventListener("keydown", (event) => {
+    // Enter in the name box only confirms the name.
+    if (event.target === nameInput) {
+      if (event.code === "Enter" || event.code === "NumpadEnter") nameInput.blur();
+      return;
+    }
     if (event.code === "Enter" || event.code === "NumpadEnter") start();
   });
   const invite = element("#invite");

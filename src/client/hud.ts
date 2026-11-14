@@ -149,7 +149,8 @@ export function createHud(onLevel: (level: number) => void): {
       fireAlert.hidden = state.phase === "over" || Object.keys(state.fires ?? {}).length === 0;
       // One row per seat, rebuilt only when someone joins or leaves.
       const seats = state.players.map((player) => player.id).sort();
-      const key = `${seats.join(",")}:${localId}`;
+      const names = new Map(state.players.map((player) => [player.id, player.name]));
+      const key = `${seats.map((id) => `${id}=${names.get(id)}`).join(",")}:${localId}`;
       if (key !== lobbyKey) {
         lobbyKey = key;
         lobbyChefs.replaceChildren(
@@ -158,7 +159,7 @@ export function createHud(onLevel: (level: number) => void): {
             const taken = seats.includes(id);
             row.className = taken ? "" : "empty";
             row.style.setProperty("--seat", taken ? seat.colour : "transparent");
-            row.textContent = taken ? seat.name : "Waiting for a chef…";
+            row.textContent = taken ? names.get(id) || seat.name : "Waiting for a chef…";
             if (id === localId) row.append(Object.assign(document.createElement("small"), { textContent: "You" }));
             return row;
           }),

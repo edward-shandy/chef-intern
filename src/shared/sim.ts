@@ -67,6 +67,8 @@ export interface Order {
 
 export interface PlayerState {
   id: number;
+  // Name the player typed in the lobby, or empty to show the seat's character name.
+  name: string;
   x: number;
   z: number;
   vx: number;
@@ -180,11 +182,14 @@ export function freePlayerSlot(state: GameState, maxPlayers: number): number | n
   return null;
 }
 
-export function addPlayer(state: GameState, id: number): void {
+export const NAME_LENGTH = 12;
+
+export function addPlayer(state: GameState, id: number, name = ""): void {
   const { spawns } = LEVELS[state.level];
   const spawn = spawns[id % spawns.length];
   state.players.push({
     id,
+    name,
     x: spawn.x,
     z: spawn.z,
     vx: 0,
@@ -473,7 +478,17 @@ export function chooseLevel(state: GameState, level: number): void {
   if (state.phase !== "waiting" || !LEVELS[level] || level === state.level) return;
   const players = state.players;
   Object.assign(state, createGame(level, state.seed, true));
-  for (const { id } of players) addPlayer(state, id);
+  for (const { id, name } of players) addPlayer(state, id, name);
+}
+
+// Names a chef, keeping only a short run of letters, digits and a few marks.
+export function renamePlayer(state: GameState, id: number, name: unknown): void {
+  const player = state.players.find((other) => other.id === id);
+  if (!player || typeof name !== "string") return;
+  player.name = name
+    .replace(/[^\p{L}\p{N} _.-]/gu, "")
+    .trim()
+    .slice(0, NAME_LENGTH);
 }
 
 // Ends the warm-up; anyone in the room may call it once everybody has arrived.
@@ -486,7 +501,7 @@ function restartRound(state: GameState): void {
   const players = state.players;
   const level = state.won ? (state.level + 1) % LEVELS.length : state.level;
   Object.assign(state, createGame(level, state.seed));
-  for (const { id } of players) addPlayer(state, id);
+  for (const { id, name } of players) addPlayer(state, id, name);
 }
 
 // Pushes the player's circle out of every solid tile it overlaps.

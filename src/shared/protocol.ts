@@ -23,4 +23,6 @@ export type ClientMessage =
   | { type: "start" }
   // Picks the kitchen while the room is still in its lobby; `level` is an index into LEVELS.
   | { type: "level"; level: number }
+  // What this chef wants to be called; the server trims it.
+  | { type: "name"; name: string }
   | { type: "ping"; t: number };

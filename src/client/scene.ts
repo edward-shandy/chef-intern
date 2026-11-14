@@ -55,6 +55,9 @@ interface ChefView {
   isLocal: boolean;
   held: ItemView | null;
   spray: THREE.Group;
+  // Name floating over the chef, and the text it was drawn for.
+  tag: THREE.Sprite | null;
+  tagText: string;
 }
 
 interface Popup {
@@ -341,7 +344,7 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
       let view = chefs.get(player.id);
       if (!view) {
         const isLocal = player.id === localId;
-        view = { rig: createChef(player.id, isLocal), isLocal, held: null, spray: createSpray() };
+        view = { rig: createChef(player.id, isLocal), isLocal, held: null, spray: createSpray(), tag: null, tagText: "" };
         view.rig.group.add(view.spray);
         view.rig.group.rotation.y = player.facing;
         world.add(view.rig.group);
@@ -358,6 +361,16 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
       animateChef(view.rig, player, dt);
       view.held = syncItem(view.held, player.held, view.rig.body);
       view.held?.mesh.position.set(0, 0.42, 0.42);
+      if ((player.name ?? "") !== view.tagText) {
+        view.tag?.removeFromParent();
+        view.tagText = player.name ?? "";
+        view.tag = view.tagText ? createLabel(view.tagText) : null;
+        if (view.tag) {
+          view.tag.scale.set(1.28, 0.4, 1);
+          view.tag.position.set(0, 1.7, 0);
+          view.rig.group.add(view.tag);
+        }
+      }
       view.spray.visible = Boolean(player.spraying);
       if (view.spray.visible) animateSpray(view.spray, time, SPRAY_RANGE);
     }

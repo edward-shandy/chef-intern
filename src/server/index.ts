@@ -11,6 +11,7 @@ import {
 import {
   addPlayer,
   chooseLevel,
+  renamePlayer,
   createGame,
   freePlayerSlot,
   IDLE_INPUT,
@@ -143,6 +144,8 @@ export class Room extends DurableObject<Env> {
       seat.input.aim = tileOrNull(message.aim);
     } else if (message.type === "level") {
       chooseLevel(this.game, Number(message.level));
+    } else if (message.type === "name") {
+      renamePlayer(this.game, this.attachmentOf(socket)!.id, message.name);
     } else if (message.type === "start") {
       startRound(this.game);
     } else if (message.type === "ping" && typeof message.t === "number") {

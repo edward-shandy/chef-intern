@@ -575,6 +575,22 @@ kbd {
   background: #fff;
 }
 
+.lobby-name {
+  padding: 9px 12px;
+  border: 2px solid rgb(36 29 48 / 0.2);
+  border-radius: 12px;
+  font: 900 16px/1.2 inherit;
+  font-family: inherit;
+  text-align: center;
+  color: var(--ink);
+  background: #fff;
+}
+
+.lobby-name:focus-visible {
+  outline: 3px solid var(--teal);
+  outline-offset: 1px;
+}
+
 .lobby-join input:focus-visible {
   outline: 3px solid var(--teal);
   outline-offset: 1px;
