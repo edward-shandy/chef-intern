@@ -1,4 +1,4 @@
-import { holdsItems, isFixture, LEVELS, tileAt, type Level } from "./level";
+import { burns, holdsItems, isFixture, LEVELS, tileAt, type Level } from "./level";
 import { isSoup, RECIPES, SOUP_OF, type DishPart, type Ingredient, type RecipeId } from "./recipes";
 
 export { RECIPES, type DishPart, type Ingredient, type RecipeId };
@@ -8,6 +8,10 @@ export const PLAYER_RADIUS = 0.34;
 export const POT_CAPACITY = 3;
 // Pot cook progress: 1 means cooked, BURN_AT means ruined.
 export const BURN_AT = 1.75;
+// In kitchens that can burn, a ruined pot left on its hob keeps heating and starts a fire at this point.
+export const FIRE_AT = 2.5;
+// How far an extinguisher reaches, in tiles.
+export const SPRAY_RANGE = 2.4;
 
 const PLAYER_SPEED = 4.6;
 const PLAYER_ACCEL = 16;
@@ -19,13 +23,18 @@ const REACH = 0.75;
 const AIM_RANGE = 0.8;
 const CHOP_SECONDS = 1.2;
 const COOK_SECONDS = 8;
-const ROUND_SECONDS = 180;
+export const ROUND_SECONDS = 900;
 const EXPIRED_PENALTY = 10;
 const MAX_TIP = 10;
 const RESTART_DELAY = 3;
 const WASH_SECONDS = 2;
 // How long a served plate stays with the customer before it comes back dirty.
 const RETURN_SECONDS = 6;
+// Seconds of spraying to put out one burning tile, and seconds between a fire spreading, by number of chefs.
+const EXTINGUISH_SECONDS = 1.5;
+const SPREAD_SECONDS = [12, 10, 8, 7];
+// Cosine of half the spray cone's angle.
+const SPRAY_ARC = 0.6;
 
 // Pacing by number of chefs, tuned so one person alone can keep up: each recipe's
 // time limit is scaled by ORDER_TIME_SCALE, a new order arrives every ORDER_INTERVAL
@@ -34,7 +43,7 @@ const ORDER_TIME_SCALE = [1, 0.8, 0.7, 0.62];
 const ORDER_INTERVAL = [42, 24, 17, 13];
 const MAX_ORDERS = [2, 3, 4, 4];
 // A kitchen's target score is written for one chef; bigger crews must earn this many times more.
-const TARGET_SCALE = [1, 1.8, 2.6, 3.3];
+export const TARGET_SCALE = [1, 1.8, 2.6, 3.3];
 
 export type Item =
   // chop runs 0..1; an ingredient counts as chopped at 1.
@@ -43,7 +52,8 @@ export type Item =
   // A pot holds up to POT_CAPACITY chopped pieces of one kind of ingredient.
   | { type: "pot"; kind: Ingredient | null; contents: number; cook: number }
   // A used plate: it can be carried and put down, but only the wash sink makes it useful again.
-  | { type: "dirty" };
+  | { type: "dirty" }
+  | { type: "extinguisher" };
 
 type Plate = Extract<Item, { type: "plate" }>;
 type Pot = Extract<Item, { type: "pot" }>;
@@ -66,6 +76,8 @@ export interface PlayerState {
   held: Item | null;
   // True while this chef is actively chopping, so clients can animate it.
   chopping: boolean;
+  // True while this chef is spraying the extinguisher.
+  spraying: boolean;
   // Seconds of dash left, and seconds until the next dash is allowed.
   dashTime: number;
   dashCooldown: number;
@@ -84,11 +96,16 @@ export interface GameState {
   returning: number[];
   // The wash sink: plates waiting in it, plates already cleaned, and progress on the current one.
   wash: { dirty: number; clean: number; progress: number };
+  // Burning tiles, keyed by tile index, each with how much fire is left from 1 down to 0.
+  fires: Record<number, number>;
+  // Seconds until the fire next jumps to a neighbouring worktop.
+  spreadIn: number;
   orders: Order[];
   score: number;
-  // Score needed to clear this kitchen, for the largest crew seen this round.
+  // Score needed to clear this kitchen: what has been asked of the crews so far plus what the current crew owes for the time left.
   target: number;
-  crewPeak: number;
+  // The part of the target already fixed by the seconds played, at whatever crew size was in the kitchen then.
+  targetSoFar: number;
   // Set when the round ends: whether the target was reached.
   won: boolean;
   delivered: number;
@@ -124,6 +141,7 @@ function startingItems(level: Level): Record<number, Item> {
   const items: Record<number, Item> = {};
   level.tiles.forEach((tile, index) => {
     if (tile.kind === "stove") items[index] = { type: "pot", kind: null, contents: 0, cook: 0 };
+    if (tile.kind === "extinguisher") items[index] = { type: "extinguisher" };
   });
   return items;
 }
@@ -137,10 +155,12 @@ export function createGame(level: number, seed: number, waiting = false): GameSt
     dirty: 0,
     returning: [],
     wash: { dirty: 0, clean: 0, progress: 0 },
+    fires: {},
+    spreadIn: SPREAD_SECONDS[0],
     orders: [],
     score: 0,
     target: LEVELS[level].target,
-    crewPeak: 1,
+    targetSoFar: 0,
     won: false,
     delivered: 0,
     timeLeft: ROUND_SECONDS,
@@ -172,6 +192,7 @@ export function addPlayer(state: GameState, id: number): void {
     facing: 0,
     held: null,
     chopping: false,
+    spraying: false,
     dashTime: 0,
     dashCooldown: 0,
   });
@@ -280,6 +301,8 @@ function interact(level: Level, state: GameState, player: PlayerState, aim: numb
   const index = targetTile(level, player, aim);
   if (index === null) return;
   if (index === aim) faceTile(level, player, index);
+  // Nothing can be picked up from or put down on a burning worktop.
+  if (state.fires[index] !== undefined) return;
   const tile = level.tiles[index];
   const resting = state.tileItems[index];
   const held = player.held;
@@ -331,10 +354,61 @@ function interact(level: Level, state: GameState, player: PlayerState, aim: numb
     const used = combine(held, resting);
     if (used === "held") player.held = null;
     if (used === "resting") delete state.tileItems[index];
-  } else if (holdsItems(tile)) {
+  } else if (holdsItems(tile) || (tile.kind === "extinguisher" && held.type === "extinguisher")) {
     state.tileItems[index] = held;
     player.held = null;
   }
+}
+
+// Sprays everything burning in a cone in front of the chef, turning towards the aimed tile first.
+function spray(level: Level, state: GameState, player: PlayerState, aim: number | null, dt: number): void {
+  if (aim !== null) faceTile(level, player, aim);
+  player.spraying = true;
+  for (const key of Object.keys(state.fires)) {
+    const index = Number(key);
+    const dx = (index % level.width) + 0.5 - player.x;
+    const dz = Math.floor(index / level.width) + 0.5 - player.z;
+    const distance = Math.hypot(dx, dz);
+    if (distance > SPRAY_RANGE) continue;
+    const ahead = (dx * Math.sin(player.facing) + dz * Math.cos(player.facing)) / Math.max(distance, 1e-6);
+    if (ahead < SPRAY_ARC) continue;
+    state.fires[index] -= dt / EXTINGUISH_SECONDS;
+    if (state.fires[index] <= 0) delete state.fires[index];
+  }
+}
+
+// Sets a worktop alight, ruining whatever food was on it.
+function ignite(state: GameState, index: number): void {
+  state.fires[index] = 1;
+  const item = state.tileItems[index];
+  if (item?.type === "ingredient") delete state.tileItems[index];
+  else if (item?.type === "plate") item.contents = [];
+  else if (item?.type === "pot" && item.contents > 0) item.cook = BURN_AT;
+}
+
+// Every so often a fire jumps to one worktop next to it, picked at random.
+function spreadFire(level: Level, state: GameState, dt: number): void {
+  const burning = Object.keys(state.fires).map(Number);
+  const crew = Math.max(0, Math.min(SPREAD_SECONDS.length, state.players.length) - 1);
+  if (burning.length === 0) {
+    state.spreadIn = SPREAD_SECONDS[crew];
+    return;
+  }
+  state.spreadIn -= dt;
+  if (state.spreadIn > 0) return;
+  state.spreadIn = SPREAD_SECONDS[crew];
+  const next = new Set<number>();
+  for (const index of burning) {
+    const tx = index % level.width;
+    const tz = Math.floor(index / level.width);
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const tile = tileAt(level, tx + dx, tz + dz);
+      const neighbour = (tz + dz) * level.width + tx + dx;
+      if (tile && burns(tile) && state.fires[neighbour] === undefined) next.add(neighbour);
+    }
+  }
+  const choices = [...next].sort((a, b) => a - b);
+  if (choices.length > 0) ignite(state, choices[Math.floor(nextRandom(state) * choices.length)]);
 }
 
 function chop(level: Level, state: GameState, player: PlayerState, aim: number | null, dt: number): void {
@@ -366,8 +440,11 @@ function chop(level: Level, state: GameState, player: PlayerState, aim: number |
 function cookPots(level: Level, state: GameState, dt: number): void {
   for (const [key, item] of Object.entries(state.tileItems)) {
     if (item.type !== "pot" || item.contents < POT_CAPACITY) continue;
-    if (level.tiles[Number(key)].kind !== "stove") continue;
-    item.cook = Math.min(BURN_AT, item.cook + dt / COOK_SECONDS);
+    const index = Number(key);
+    if (level.tiles[index].kind !== "stove" || state.fires[index] !== undefined) continue;
+    item.cook = Math.min(level.fire ? FIRE_AT : BURN_AT, item.cook + dt / COOK_SECONDS);
+    // The pot drops back to merely burnt, so it flares up again unless somebody takes it off the hob.
+    if (level.fire && item.cook >= FIRE_AT) ignite(state, index);
   }
 }
 
@@ -512,12 +589,12 @@ export function stepGame(state: GameState, inputs: Record<number, PlayerInput>, 
   }
   const level = LEVELS[state.level];
 
-  // The target only ever rises, so a teammate leaving mid-round does not make it easier.
+  // The target is charged by the second at the rate of whoever is cooking, so it follows chefs joining and leaving.
   const crew = Math.max(1, Math.min(TARGET_SCALE.length, state.players.length));
-  if (crew > state.crewPeak) {
-    state.crewPeak = crew;
-    state.target = Math.round((level.target * TARGET_SCALE[crew - 1]) / 5) * 5;
-  }
+  const perSecond = (level.target * TARGET_SCALE[crew - 1]) / ROUND_SECONDS;
+  const played = state.phase === "playing" ? Math.min(dt, state.timeLeft) : 0;
+  state.targetSoFar += perSecond * played;
+  state.target = Math.round((state.targetSoFar + perSecond * (state.timeLeft - played)) / 5) * 5;
 
   for (const player of state.players) movePlayer(player, inputs[player.id] ?? IDLE_INPUT, dt);
 
@@ -525,12 +602,14 @@ export function stepGame(state: GameState, inputs: Record<number, PlayerInput>, 
   for (const player of state.players) {
     resolveCollisions(level, player);
     const input = inputs[player.id] ?? IDLE_INPUT;
-    player.chopping = false;
+    player.chopping = player.spraying = false;
     if (input.interact) interact(level, state, player, input.aim);
-    if (input.use) chop(level, state, player, input.aim, dt);
+    if (input.use && player.held?.type === "extinguisher") spray(level, state, player, input.aim, dt);
+    else if (input.use) chop(level, state, player, input.aim, dt);
   }
 
   cookPots(level, state, dt);
+  spreadFire(level, state, dt);
   // Plates that were served come back dirty once the customer has finished.
   state.returning = state.returning.map((seconds) => seconds - dt);
   state.dirty += state.returning.filter((seconds) => seconds <= 0).length;
@@ -544,7 +623,10 @@ export function stepGame(state: GameState, inputs: Record<number, PlayerInput>, 
     state.phase = "over";
     state.overFor = 0;
     state.won = state.score >= state.target;
-    for (const player of state.players) player.vx = player.vz = player.dashTime = 0;
+    for (const player of state.players) {
+      player.vx = player.vz = player.dashTime = 0;
+      player.chopping = player.spraying = false;
+    }
   }
 }
 

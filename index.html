@@ -27,18 +27,26 @@
         <b><span id="score">0</span><span class="goal-of">/ <span id="target">0</span></span></b>
         <div class="goal" id="goal"><i></i></div>
       </div>
-      <div class="stat stat-timer"><small>Time left</small><b id="timer">3:00</b></div>
+      <div class="stat stat-timer"><small>Time left</small><b id="timer">15:00</b></div>
+      <p id="fire-alert" class="fire-alert" role="alert" hidden>Fire! Grab the extinguisher and hold <kbd>F</kbd></p>
     </div>
     <section id="waiting" class="lobby" hidden>
-      <div class="lobby-card">
-        <p class="lobby-kicker">Kitchen code</p>
-        <h2 id="room-code" class="lobby-code"></h2>
-        <ul id="lobby-chefs" class="lobby-chefs"></ul>
-        <p class="lobby-kicker">Kitchen</p>
-        <div id="levels" class="lobby-levels" role="group" aria-label="Kitchen"></div>
-        <button id="start" class="button button-primary" type="button">Start service <kbd>Enter</kbd></button>
-        <button id="invite" class="button" type="button">Copy invite link</button>
-        <button id="leave-lobby" class="button button-quiet" type="button">Back to the front door</button>
+      <div class="lobby-card lobby-room">
+        <div class="lobby-side">
+          <p class="lobby-kicker">Kitchen code</p>
+          <h2 id="room-code" class="lobby-code"></h2>
+          <ul id="lobby-chefs" class="lobby-chefs"></ul>
+          <button id="start" class="button button-primary" type="button">Start service <kbd>Enter</kbd></button>
+          <button id="invite" class="button" type="button">Copy invite link</button>
+          <button id="leave-lobby" class="button button-quiet" type="button">Back to the front door</button>
+        </div>
+        <div class="lobby-main">
+          <div class="lobby-head">
+            <p class="lobby-kicker">Choose a kitchen</p>
+            <span id="level-count" class="lobby-count"></span>
+          </div>
+          <div id="levels" class="level-grid" role="group" aria-label="Kitchen"></div>
+        </div>
       </div>
     </section>
     <section id="lobby" class="lobby" hidden>
@@ -64,7 +72,7 @@
     </section>
     <p class="hint">
       <kbd>WASD</kbd> move <span>·</span> <kbd>Shift</kbd> dash <span>·</span> <kbd>E</kbd> or <kbd>click</kbd> use
-      <span>·</span> hold <kbd>F</kbd> or <kbd>right-click</kbd> chop
+      <span>·</span> hold <kbd>F</kbd> or <kbd>right-click</kbd> chop, wash, spray
     </p>
     <script type="module" src="/src/client/main.ts"></script>
   </body>

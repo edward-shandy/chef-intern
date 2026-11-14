@@ -1,5 +1,5 @@
-import { LEVELS } from "../shared/level";
-import { RECIPES, type GameState, type RecipeId } from "../shared/sim";
+import { LEVELS, type Level, type Tile } from "../shared/level";
+import { RECIPES, ROUND_SECONDS, TARGET_SCALE, type GameState, type RecipeId } from "../shared/sim";
 
 type IconName = "lettuce" | "tomato" | "onion" | "soup" | "arrow";
 
@@ -27,6 +27,45 @@ const SEATS = [
   { name: "Rogue", colour: "#e4b03d" },
 ];
 
+// Colours of the little floor plan on each kitchen card.
+const PLAN_COLOURS: Record<Tile["kind"], string> = {
+  floor: "#f4ecdc",
+  counter: "#ee9a62",
+  crate: "#7ccf4f",
+  trash: "#3a3340",
+  board: "#c98a4a",
+  stove: "#4a4d5a",
+  plates: "#3d8fe4",
+  serve: "#45b7a0",
+  return: "#8a5fa8",
+  wash: "#5fb8e8",
+  extinguisher: "#d23c2c",
+  sink: "#b9c3d6",
+  fridge: "#b9c3d6",
+  plant: "#4f9d4a",
+};
+const CRATE_COLOURS = { tomato: "#e23b2e", lettuce: "#7ccf4f", onion: "#c98bd0" };
+
+// Draws a kitchen's tiles as a small top-down plan.
+function floorPlan(level: Level): string {
+  const tiles = level.tiles.map((tile, index) => {
+    const x = index % level.width;
+    const y = Math.floor(index / level.width);
+    const fill = tile.dispenses ? CRATE_COLOURS[tile.dispenses] : PLAN_COLOURS[tile.kind];
+    const inset = tile.kind === "floor" ? 0 : 0.06;
+    return `<rect x="${x + inset}" y="${y + inset}" width="${1 - inset * 2}" height="${1 - inset * 2}" rx="${inset ? 0.18 : 0}" fill="${fill}"/>`;
+  });
+  return `<svg viewBox="0 0 ${level.width} ${level.height}" aria-hidden="true"><rect width="${level.width}" height="${level.height}" fill="#f4ecdc"/>${tiles.join("")}</svg>`;
+}
+
+// What sets a kitchen apart, as short tags.
+function levelTags(level: Level): string[] {
+  const tags = [`${level.recipes.length} recipes`];
+  if (level.plates) tags.push("Dish washing");
+  if (level.fire) tags.push("Fire");
+  return tags;
+}
+
 const element = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
 
 // Keeps the DOM overlay in step with server snapshots, touching it only when values change.
@@ -49,16 +88,22 @@ export function createHud(onLevel: (level: number) => void): {
   const resultNext = element("#result-next");
   const waiting = element("#waiting");
   const lobbyChefs = element("#lobby-chefs");
-  // One button per kitchen; anyone in the lobby may pick, and the server tells everyone the result.
+  const fireAlert = element("#fire-alert");
+  // One card per kitchen; anyone in the lobby may pick, and the server tells everyone the result.
+  const minutes = Math.round(ROUND_SECONDS / 60);
   const levelButtons = LEVELS.map((level, index) => {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "lobby-level";
-    button.innerHTML = `<b>${index + 1}</b><span>${level.name}</span>`;
+    button.className = "level-card";
+    const dots = Array.from({ length: 5 }, (_, i) => `<i${i < level.difficulty ? ' class="on"' : ""}></i>`).join("");
+    const tags = levelTags(level).map((tag) => `<span class="level-tag level-tag-${tag === "Fire" ? "fire" : tag === "Dish washing" ? "wash" : "plain"}">${tag}</span>`);
+    button.innerHTML = `<span class="level-plan">${floorPlan(level)}<b class="level-number">${index + 1}</b></span><span class="level-name">${level.name}</span><span class="level-dots" aria-label="Difficulty ${level.difficulty} of 5">${dots}</span><span class="level-tags">${tags.join("")}</span><span class="level-goal"><b data-target></b> pts in ${minutes} min</span>`;
     button.addEventListener("click", () => onLevel(index));
     return button;
   });
   element("#levels").replaceChildren(...levelButtons);
+  element("#level-count").textContent = `${LEVELS.length} kitchens`;
+  let targetsFor = 0;
   let lobbyKey = "";
   const cards = new Map<number, HTMLElement>();
   let shownScore: number | null = null;
@@ -92,6 +137,16 @@ export function createHud(onLevel: (level: number) => void): {
         score.textContent = String(state.score);
       }
       levelButtons.forEach((button, index) => button.setAttribute("aria-pressed", String(index === state.level)));
+      // Every card shows the score its kitchen asks of the crew that is here now.
+      const crew = Math.max(1, Math.min(TARGET_SCALE.length, state.players.length));
+      if (crew !== targetsFor) {
+        targetsFor = crew;
+        levelButtons.forEach((button, index) => {
+          const goal = Math.round((LEVELS[index].target * TARGET_SCALE[crew - 1]) / 5) * 5;
+          button.querySelector("[data-target]")!.textContent = String(goal);
+        });
+      }
+      fireAlert.hidden = state.phase === "over" || Object.keys(state.fires ?? {}).length === 0;
       // One row per seat, rebuilt only when someone joins or leaves.
       const seats = state.players.map((player) => player.id).sort();
       const key = `${seats.join(",")}:${localId}`;

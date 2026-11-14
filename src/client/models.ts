@@ -4,12 +4,17 @@ import type { Level, TileKind } from "../shared/level";
 import type { Ingredient } from "../shared/recipes";
 import {
   BURN_AT,
+  FIRE_AT,
   isChopped,
   POT_CAPACITY,
   potIsCooked,
   type Item,
 } from "../shared/sim";
 import { decoration, model, MODEL_SCALE, modelGeometry, modelMaterial, type ModelName } from "./assets";
+import { createExtinguisher } from "./fire";
+import { createStreet, streetGround } from "./street";
+
+export { animateStreet } from "./street";
 
 export const COLORS = {
   background: 0x1b1624,
@@ -105,20 +110,20 @@ export function shadowed<T extends THREE.Object3D>(object: T): T {
   return object;
 }
 
-const rounded = (width: number, height: number, depth: number, radius: number) =>
+export const rounded = (width: number, height: number, depth: number, radius: number) =>
   new RoundedBoxGeometry(width, height, depth, 2, radius);
-const box = (width: number, height: number, depth: number) => new THREE.BoxGeometry(width, height, depth);
-const cylinder = (top: number, bottom: number, height: number, segments = 24) =>
+export const box = (width: number, height: number, depth: number) => new THREE.BoxGeometry(width, height, depth);
+export const cylinder = (top: number, bottom: number, height: number, segments = 24) =>
   new THREE.CylinderGeometry(top, bottom, height, segments);
-const ball = (radius: number, detail = 16) => new THREE.SphereGeometry(radius, detail, Math.max(8, detail - 4));
+export const ball = (radius: number, detail = 16) => new THREE.SphereGeometry(radius, detail, Math.max(8, detail - 4));
 
 // Stable pseudo-random number in 0..1, so decoration looks the same on every client and reload.
-const noise = (seed: number): number => {
+export const noise = (seed: number): number => {
   const value = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
   return value - Math.floor(value);
 };
 
-function canvasTexture(width: number, height: number, draw: (ctx: CanvasRenderingContext2D) => void): THREE.CanvasTexture {
+export function canvasTexture(width: number, height: number, draw: (ctx: CanvasRenderingContext2D) => void): THREE.CanvasTexture {
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
@@ -241,239 +246,6 @@ export function animateGuests(room: THREE.Group, time: number, cheer: number): v
   });
 }
 
-interface StreetMover {
-  group: THREE.Group;
-  lane: number;
-  phase: number;
-  speed: number;
-  direction: 1 | -1;
-  legs?: THREE.Group[];
-  arms?: THREE.Group[];
-}
-
-interface StreetView {
-  start: number;
-  length: number;
-  cars: StreetMover[];
-  pedestrians: StreetMover[];
-}
-
-function createStreetCar(bodyColour: number): THREE.Group {
-  const car = new THREE.Group();
-  const paint = mat(bodyColour, 0.38, 0.08);
-  const glass = mat(0x8db5bd, 0.22, 0.12);
-  const wheel = mat(0x24262a, 0.9);
-  car.add(
-    mesh(rounded(0.78, 0.3, 1.55, 0.1), paint, 0, 0.39, 0),
-    mesh(rounded(0.58, 0.31, 0.78, 0.12), paint, 0, 0.68, -0.02),
-    mesh(rounded(0.51, 0.22, 0.68, 0.08), glass, 0, 0.70, -0.02),
-    mesh(box(0.18, 0.09, 0.035), mat(0xffedc3, 0.32), -0.23, 0.43, 0.78),
-    mesh(box(0.18, 0.09, 0.035), mat(0xffedc3, 0.32), 0.23, 0.43, 0.78),
-    mesh(box(0.16, 0.08, 0.035), mat(0xe84e42, 0.4), -0.23, 0.43, -0.78),
-    mesh(box(0.16, 0.08, 0.035), mat(0xe84e42, 0.4), 0.23, 0.43, -0.78),
-  );
-  for (const x of [-0.4, 0.4]) {
-    for (const z of [-0.48, 0.48]) {
-      const tire = mesh(cylinder(0.13, 0.13, 0.12, 10), wheel, x, 0.22, z);
-      tire.rotation.z = Math.PI / 2;
-      car.add(tire);
-    }
-  }
-  shadowed(car);
-  return car;
-}
-
-function createPedestrian(shirt: number, trousers: number, skin: number, hair: number) {
-  const person = new THREE.Group();
-  const limbs = mat(trousers, 0.86);
-  const top = mat(shirt, 0.78);
-  const skinMaterial = mat(skin, 0.88);
-  const hairMaterial = mat(hair, 0.9);
-  person.add(
-    mesh(new THREE.CylinderGeometry(0.19, 0.23, 0.48, 8), top, 0, 0.70, 0),
-    mesh(ball(0.17, 10), skinMaterial, 0, 1.07, 0.035),
-    mesh(ball(0.175, 8), hairMaterial, 0, 1.15, -0.035),
-  );
-  const legs: THREE.Group[] = [];
-  const arms: THREE.Group[] = [];
-  for (const side of [-1, 1]) {
-    const leg = new THREE.Group();
-    leg.position.set(side * 0.105, 0.47, 0);
-    leg.add(mesh(box(0.12, 0.42, 0.14), limbs, 0, -0.20, 0));
-    leg.add(mesh(rounded(0.15, 0.09, 0.23, 0.035), mat(0x473a37, 0.86), 0, -0.42, 0.035));
-    person.add(leg);
-    legs.push(leg);
-
-    const arm = new THREE.Group();
-    arm.position.set(side * 0.23, 0.84, 0);
-    arm.add(mesh(box(0.11, 0.36, 0.12), top, 0, -0.17, 0));
-    arm.add(mesh(ball(0.06, 8), skinMaterial, 0, -0.37, 0.015));
-    person.add(arm);
-    arms.push(arm);
-  }
-  shadowed(person);
-  return { group: person, legs, arms };
-}
-
-function createStreet(level: Level, anisotropy: number): { group: THREE.Group; view: StreetView } | null {
-  const plan = level.decor.room;
-  if (!plan?.street || plan.street.side !== "back") return null;
-
-  const group = new THREE.Group();
-  const { width } = level;
-  const span = width + plan.margin * 2;
-  const start = -plan.margin - 3;
-  const length = span + 6;
-  const centreX = width / 2;
-  const sidewalkZ = -2.05;
-  const sidewalkDepth = 1.5;
-  const roadZ = -4.75;
-  const roadDepth = 4.2;
-  const roadNorth = roadZ - roadDepth / 2;
-  const roadSouth = roadZ + roadDepth / 2;
-  const outsideWalkZ = -7.45;
-
-  const sidewalkMaterial = mat(0xb9b3a5, 0.92);
-  const asphalt = canvasTexture(128, 256, (ctx) => {
-    ctx.fillStyle = "#484a50";
-    ctx.fillRect(0, 0, 128, 256);
-    for (let i = 0; i < 130; i++) {
-      const x = (i * 47) % 128;
-      const z = (i * 83) % 256;
-      ctx.fillStyle = i % 3 === 0 ? "rgba(230,220,205,.07)" : "rgba(18,20,24,.10)";
-      ctx.fillRect(x, z, i % 4 === 0 ? 2 : 1, 1);
-    }
-  });
-  asphalt.wrapS = asphalt.wrapT = THREE.RepeatWrapping;
-  asphalt.repeat.set(length / 5, 1);
-  asphalt.anisotropy = anisotropy;
-  const asphaltMaterial = new THREE.MeshStandardMaterial({ map: asphalt, roughness: 0.96 });
-  const horizontal = (w: number, d: number, material: THREE.Material, x: number, z: number, y: number) => {
-    const surface = mesh(new THREE.PlaneGeometry(w, d), material, x, y, z);
-    surface.rotation.x = -Math.PI / 2;
-    surface.receiveShadow = true;
-    return surface;
-  };
-
-  group.add(
-    horizontal(length, sidewalkDepth, sidewalkMaterial, centreX, sidewalkZ, -0.002),
-    horizontal(length, roadDepth, asphaltMaterial, centreX, roadZ, 0.002),
-    horizontal(length, 1.1, sidewalkMaterial, centreX, outsideWalkZ, -0.001),
-  );
-
-  // Slab seams and tactile curb edges make the road read as an outdoor street, behind the room.
-  for (let x = start + 0.55; x < start + length; x += 0.9) {
-    group.add(
-      mesh(box(0.018, 0.008, sidewalkDepth - 0.08), mat(0x99958b, 1), x, 0.008, sidewalkZ),
-      mesh(box(0.018, 0.008, 1.02), mat(0x99958b, 1), x, 0.008, outsideWalkZ),
-    );
-  }
-  const curb = mat(0xd5c9ad, 0.8);
-  group.add(
-    mesh(box(length, 0.11, 0.14), curb, centreX, 0.055, roadSouth - 0.03),
-    mesh(box(length, 0.11, 0.14), curb, centreX, 0.055, roadNorth + 0.03),
-  );
-
-  // Broken lane divider and crosswalk run across the street, parallel to the restaurant wall.
-  const lanePaint = mat(0xe3cf91, 0.72);
-  const whitePaint = mat(0xe5e2d8, 0.74);
-  for (let x = start + 0.5; x < start + length; x += 1.2) {
-    group.add(mesh(box(0.62, 0.012, 0.055), lanePaint, x, 0.014, roadZ));
-  }
-  group.add(
-    mesh(box(length - 0.2, 0.012, 0.035), whitePaint, centreX, 0.013, roadSouth - 0.18),
-    mesh(box(length - 0.2, 0.012, 0.035), whitePaint, centreX, 0.013, roadNorth + 0.18),
-  );
-  const crossX = width * 0.42;
-  for (let z = roadNorth + 0.3; z < roadSouth - 0.2; z += 0.48) {
-    group.add(mesh(box(0.72, 0.014, 0.25), whitePaint, crossX, 0.015, z));
-  }
-
-  // Storm drains, street lamps and young roadside trees fill the strip above the restaurant.
-  const metal = mat(0x4d5055, 0.58, 0.45);
-  for (const x of [start + 3.2, centreX, start + length - 3.2]) {
-    group.add(mesh(box(0.22, 0.018, 0.42), metal, x, 0.018, roadNorth + 0.48));
-    group.add(
-      mesh(cylinder(0.045, 0.07, 2.65, 8), metal, x, 1.325, outsideWalkZ),
-      mesh(box(0.08, 0.07, 0.48), metal, x, 2.56, outsideWalkZ + 0.20),
-      mesh(ball(0.10, 8), mat(0xffd48a, 0.4), x, 2.53, outsideWalkZ + 0.42),
-    );
-  }
-  const bark = mat(0x73503a, 0.95);
-  const leaves = [mat(0x47643e, 0.9), mat(0x6b8144, 0.9)];
-  for (const [i, x] of [start + 5.5, start + 13.5, start + 23].entries()) {
-    group.add(
-      mesh(cylinder(0.11, 0.15, 1.35, 7), bark, x, 0.68, outsideWalkZ - 0.45),
-      mesh(ball(0.62, 9), leaves[i % leaves.length], x, 1.8, outsideWalkZ - 0.45),
-      mesh(ball(0.42, 8), leaves[(i + 1) % leaves.length], x + 0.32, 1.62, outsideWalkZ - 0.52),
-    );
-  }
-
-  const cars: StreetMover[] = [];
-  const carColours = [0x3f91b7, 0xd95743, 0xe0b34c, 0x638b60];
-  const lanes = [roadNorth + roadDepth * 0.28, roadNorth + roadDepth * 0.72];
-  for (let i = 0; i < 4; i++) {
-    const direction: 1 | -1 = i % 2 === 0 ? 1 : -1;
-    const car = createStreetCar(carColours[i]);
-    car.rotation.y = direction > 0 ? Math.PI / 2 : -Math.PI / 2;
-    group.add(car);
-    cars.push({
-      group: car,
-      lane: lanes[direction > 0 ? 0 : 1],
-      phase: i * (length / 4) + (i % 2) * 1.1,
-      speed: 1.0 + (i % 3) * 0.24,
-      direction,
-    });
-  }
-
-  const pedestrians: StreetMover[] = [];
-  const outfits = [
-    [0xd65c45, 0x343d56, 0xd9a77e, 0x4b3021],
-    [0x3f8396, 0x493b34, 0x8d5e3f, 0x24201d],
-    [0xd19b42, 0x465f45, 0xf0c49a, 0x5b3c2c],
-    [0x8b689c, 0x393c50, 0xc78362, 0x34241e],
-  ];
-  for (let i = 0; i < outfits.length; i++) {
-    const [shirt, trousers, skin, hair] = outfits[i];
-    const person = createPedestrian(shirt, trousers, skin, hair);
-    group.add(person.group);
-    pedestrians.push({
-      group: person.group,
-      legs: person.legs,
-      arms: person.arms,
-      lane: sidewalkZ - (i % 2 ? 0.24 : 0.04),
-      phase: i * (length / outfits.length),
-      speed: 0.48 + i * 0.09,
-      direction: i % 2 === 0 ? 1 : -1,
-    });
-  }
-
-  group.traverse((child) => {
-    if (child instanceof THREE.Mesh) {
-      child.castShadow = child.position.y > 0.05;
-      child.receiveShadow = true;
-    }
-  });
-  const view: StreetView = { start, length, cars, pedestrians };
-  return { group, view };
-}
-
-export function animateStreet(room: THREE.Group, time: number): void {
-  const street = room.userData.street as StreetView | undefined;
-  if (!street) return;
-  for (const vehicle of street.cars) {
-    const distance = (time * vehicle.speed + vehicle.phase) % street.length;
-    vehicle.group.position.set(street.start + (vehicle.direction > 0 ? distance : street.length - distance), 0, vehicle.lane);
-  }
-  street.pedestrians.forEach((person, i) => {
-    const distance = (time * person.speed + person.phase) % street.length;
-    person.group.position.set(street.start + (person.direction > 0 ? distance : street.length - distance), 0, person.lane);
-    person.group.rotation.y = person.direction > 0 ? Math.PI / 2 : -Math.PI / 2;
-    person.legs?.forEach((leg, side) => (leg.rotation.x = Math.sin(time * 5 + i + side * Math.PI) * 0.38));
-    person.arms?.forEach((arm, side) => (arm.rotation.x = Math.sin(time * 5 + i + Math.PI + side * Math.PI) * 0.28));
-  });
-}
-
 // Floor, a wooden deck around it, the restaurant or a plain wall behind, and lamps over the back counters.
 export function createRoom(level: Level, anisotropy: number): THREE.Group {
   const room = new THREE.Group();
@@ -498,9 +270,12 @@ export function createRoom(level: Level, anisotropy: number): THREE.Group {
   const deckMap = woodTexture("#6a4a3c", "#2a1a14", 4, 40);
   deckMap.repeat.set(26, 26);
   deckMap.anisotropy = anisotropy;
+  // A kitchen on a street stands on lawn rather than on the wooden deck.
   const deck = mesh(
     new THREE.PlaneGeometry(90, 90),
-    new THREE.MeshStandardMaterial({ map: deckMap, roughness: 0.9 }),
+    plan?.street
+      ? new THREE.MeshStandardMaterial({ color: streetGround(level), roughness: 0.95 })
+      : new THREE.MeshStandardMaterial({ map: deckMap, roughness: 0.9 }),
     width / 2,
     -0.02,
     height / 2,
@@ -737,6 +512,8 @@ export function createItem(item: Item): THREE.Group {
     }
   } else if (item.type === "dirty") {
     parts.add(part("plate_dirty"));
+  } else if (item.type === "extinguisher") {
+    group.add(createExtinguisher());
   } else {
     const ruined = item.cook >= BURN_AT;
     const full = item.contents >= POT_CAPACITY;
@@ -772,17 +549,20 @@ export function itemSignature(item: Item): string {
   if (item.type === "ingredient") return `i:${item.kind}:${isChopped(item)}`;
   if (item.type === "plate") return `p:${item.contents.join("+")}`;
   if (item.type === "dirty") return "d";
+  if (item.type === "extinguisher") return "x";
   const stage = item.cook >= BURN_AT ? "burnt" : item.cook >= 1 ? "cooked" : "raw";
   return `k:${item.kind}:${item.contents}:${stage}`;
 }
 
 // Fraction and colour of the progress bar an item should show, if any.
-export function itemProgress(item: Item): { value: number; colour: number } | null {
+export function itemProgress(item: Item, onHob = true): { value: number; colour: number } | null {
   if (item.type === "ingredient") {
     return item.chop > 0 && item.chop < 1 ? { value: item.chop, colour: COLORS.barChop } : null;
   }
   if (item.type !== "pot" || item.contents < POT_CAPACITY || item.cook <= 0) return null;
   if (item.cook < 1) return { value: item.cook, colour: COLORS.barCook };
+  // Past burnt, the bar fills red towards the moment the hob catches fire.
+  if (item.cook > BURN_AT && onHob) return { value: (item.cook - BURN_AT) / (FIRE_AT - BURN_AT), colour: COLORS.barBurn };
   if (!potIsCooked(item.cook)) return null;
   // Once cooked the bar drains instead, showing how long is left before it burns.
   const safe = 1 - (item.cook - 1) / (BURN_AT - 1);
@@ -798,11 +578,14 @@ export interface PotStatus {
 }
 
 // What a pot should announce above itself: how full it is, or how its soup is doing.
-export function potStatus(item: Item): PotStatus | null {
+export function potStatus(item: Item, onHob = true): PotStatus | null {
   if (item.type !== "pot" || item.contents === 0) return null;
   const status: PotStatus = { badge: null, badgeColour: LABEL_DARK, steam: "none", ready: false, cooking: false };
   if (item.contents < POT_CAPACITY || item.cook === 0) {
     status.badge = `${item.contents}/${POT_CAPACITY}`;
+  } else if (item.cook > BURN_AT && onHob) {
+    // Only kitchens that can burn let a pot heat past burnt.
+    Object.assign(status, { badge: "FIRE RISK!", badgeColour: "#d23c2c", steam: "dark", ready: true });
   } else if (item.cook >= BURN_AT) {
     Object.assign(status, { badge: "BURNT", badgeColour: "#d23c2c", steam: "dark" });
   } else if (item.cook >= 1) {
@@ -822,6 +605,7 @@ const STATION_LABELS: Partial<Record<TileKind, string>> = {
   serve: "SERVE",
   return: "DIRTY",
   wash: "WASH",
+  extinguisher: "FIRE EXT.",
   trash: "TRASH",
 };
 
@@ -983,6 +767,14 @@ export function createStations(level: Level): Stations {
       const sideZ = -Math.sin(turn) * 0.3;
       pile(sinkDirty, "plate_dirty", level.plates ?? 0, x - sideX, top + 0.02, z - sideZ, 0.3);
       pile(sinkClean, "plate", level.plates ?? 0, x + sideX, top + 0.02, z + sideZ, 0.3);
+    } else if (tile.kind === "extinguisher") {
+      // A red mat with white corner marks, so the extinguisher's home is easy to spot even when it is away.
+      group.add(mesh(rounded(0.86, 0.04, 0.86, 0.02), mat(0xd23c2c, 0.5), x, top + 0.02, z));
+      group.add(mesh(cylinder(0.2, 0.2, 0.045, 20), mat(0xfff3d6, 0.6), x, top + 0.022, z));
+      for (const [cx, cz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+        group.add(mesh(box(0.14, 0.045, 0.05), mat(0xfff3d6, 0.6), x + cx * 0.3, top + 0.022, z + cz * 0.36));
+        group.add(mesh(box(0.05, 0.045, 0.14), mat(0xfff3d6, 0.6), x + cx * 0.36, top + 0.022, z + cz * 0.3));
+      }
     } else if (tile.kind === "plates") {
       group.add(prop("dishrack_plates", x, top, z, turn + Math.PI / 2));
     } else if (tile.kind === "trash") {

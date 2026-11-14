@@ -38,6 +38,8 @@ kbd {
   touch-action: none;
   width: 100vw;
   height: 100vh;
+  /* The dynamic height excludes a phone browser's address bar, which 100vh would draw the kitchen underneath. */
+  height: 100dvh;
 }
 
 /* Darkens the corners so the eye stays on the kitchen. */
@@ -64,6 +66,7 @@ kbd {
   letter-spacing: 0.02em;
   color: var(--cream);
   text-shadow: 0 2px 0 rgb(0 0 0 / 0.35);
+  white-space: nowrap;
 }
 
 #status {
@@ -74,6 +77,7 @@ kbd {
   color: var(--cream);
   background: var(--panel);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 #status::before {
@@ -112,6 +116,35 @@ kbd {
   background: var(--panel);
   cursor: pointer;
   pointer-events: auto;
+  white-space: nowrap;
+}
+
+/* On a narrow phone the title makes way for the buttons, and the status pill shrinks to fit beside them. */
+@media (max-width: 640px) {
+  .hud {
+    inset: 10px 10px auto 10px;
+    justify-content: flex-end;
+  }
+
+  .hud h1 {
+    display: none;
+  }
+
+  .hud-right {
+    gap: 5px;
+    min-width: 0;
+  }
+
+  .pill-button,
+  #status {
+    padding: 5px 9px;
+    font-size: 12px;
+  }
+
+  #status {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 }
 
 .pill-button[aria-pressed="true"] {
@@ -150,7 +183,9 @@ kbd {
   inset: 0;
   display: grid;
   place-items: center;
-  padding: 16px;
+  /* The top padding keeps the card clear of the header buttons. */
+  padding: 56px 16px 16px;
+  box-sizing: border-box;
   background: radial-gradient(ellipse at 50% 35%, #3a2f52, #1f1929 70%);
 }
 
@@ -243,44 +278,274 @@ kbd {
   color: var(--teal);
 }
 
-.lobby-levels {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
-  gap: 8px;
+/* The room lobby is two columns: who is here on the left, the kitchen picker on the right. */
+.lobby-room {
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 24px;
+  width: min(980px, 100%);
+  max-height: calc(100dvh - 72px);
+  overflow-y: auto;
+  text-align: left;
 }
 
-.lobby-level {
+/* A phone held sideways: tighter spacing and the seats two abreast, so Start stays on screen. */
+@media (max-height: 480px) {
+  .lobby-room {
+    grid-template-columns: 230px minmax(0, 1fr);
+    gap: 16px;
+    padding: 14px 16px;
+  }
+
+  .lobby-side {
+    gap: 8px;
+  }
+
+  .lobby-card .lobby-code {
+    font-size: 30px;
+  }
+
+  .lobby-chefs {
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    margin: 0;
+  }
+
+  .lobby-chefs li {
+    gap: 6px;
+    padding: 5px 8px;
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  .lobby-chefs li.empty {
+    font-size: 0;
+  }
+
+  .lobby-chefs li.empty::after {
+    content: "Open seat";
+    font-size: 12px;
+  }
+
+  .lobby-side .button {
+    padding: 8px 12px;
+    font-size: 14px;
+  }
+
+  .level-grid {
+    grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+    gap: 8px;
+    max-height: calc(100dvh - 140px);
+  }
+}
+
+.lobby-side {
   display: grid;
-  gap: 2px;
-  padding: 8px 6px;
-  border: 2px solid rgb(36 29 48 / 0.15);
-  border-radius: 12px;
+  gap: 12px;
+  align-content: start;
+  text-align: center;
+}
+
+.lobby-main {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+  min-height: 0;
+}
+
+.lobby-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.lobby-count {
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0.6;
+}
+
+/* Cards wrap into as many columns as fit and the grid scrolls, so more kitchens need no new layout. */
+.level-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 12px;
+  align-content: start;
+  max-height: min(64dvh, 560px);
+  padding: 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.level-card {
+  display: grid;
+  gap: 6px;
+  padding: 8px 8px 10px;
+  border: 2px solid rgb(36 29 48 / 0.14);
+  border-radius: 14px;
   font-family: inherit;
+  text-align: left;
   color: var(--ink);
   background: #fff;
   cursor: pointer;
-  transition: transform 0.12s ease-out;
+  transition:
+    transform 0.14s ease-out,
+    border-color 0.14s ease-out,
+    box-shadow 0.14s ease-out;
 }
 
-.lobby-level:active {
-  transform: scale(0.97);
+@media (hover: hover) {
+  .level-card:hover {
+    transform: translateY(-2px);
+    border-color: rgb(36 29 48 / 0.35);
+  }
 }
 
-.lobby-level b {
-  font-size: 20px;
-  font-weight: 900;
-  line-height: 1;
+.level-card:active {
+  transform: scale(0.98);
 }
 
-.lobby-level span {
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.lobby-level[aria-pressed="true"] {
+.level-card[aria-pressed="true"] {
   border-color: var(--teal);
+  box-shadow: 0 0 0 3px rgb(47 127 134 / 0.25);
+}
+
+.level-plan {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: 9px;
+  background: #f4ecdc;
+}
+
+.level-plan svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.level-number {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  font-size: 13px;
+  font-weight: 900;
   color: #fff;
+  background: var(--ink);
+}
+
+.level-card[aria-pressed="true"] .level-number {
   background: var(--teal);
+}
+
+.level-name {
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.level-dots {
+  display: flex;
+  gap: 4px;
+}
+
+.level-dots i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: rgb(36 29 48 / 0.14);
+}
+
+.level-dots i.on {
+  background: #d2411f;
+}
+
+.level-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.level-tag {
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 900;
+  color: var(--ink);
+  background: rgb(36 29 48 / 0.08);
+}
+
+.level-tag-wash {
+  color: #1d5f8a;
+  background: #d9effb;
+}
+
+.level-tag-fire {
+  color: #a3260f;
+  background: #ffe1d6;
+}
+
+.level-goal {
+  font-size: 11.5px;
+  font-weight: 700;
+  opacity: 0.75;
+}
+
+.level-goal b {
+  font-weight: 900;
+}
+
+@media (max-width: 720px) {
+  .lobby-room {
+    grid-template-columns: minmax(0, 1fr);
+    overflow-y: auto;
+  }
+
+  .level-grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    max-height: none;
+    overflow: visible;
+  }
+}
+
+/* Shown over the kitchen while anything is burning. */
+.fire-alert {
+  position: fixed;
+  top: 132px;
+  left: 50%;
+  margin: 0;
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 900;
+  white-space: nowrap;
+  color: #fff;
+  background: #d23c2c;
+  box-shadow: 0 4px 0 rgb(0 0 0 / 0.3);
+  transform: translateX(-50%);
+  animation: fire-alert 0.7s ease-in-out infinite alternate;
+}
+
+.fire-alert kbd {
+  color: #d23c2c;
+  background: #fff;
+}
+
+@keyframes fire-alert {
+  to {
+    background: #f0702a;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fire-alert {
+    animation: none;
+  }
 }
 
 .button-quiet {

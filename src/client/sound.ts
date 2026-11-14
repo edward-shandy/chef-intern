@@ -19,6 +19,7 @@ interface Heard {
   phase: GameState["phase"];
   pots: Map<number, string>;
   dashing: boolean;
+  fires: number;
 }
 
 const describe = (item: Item | null): string => (item ? JSON.stringify(item, (key, value) => (key === "chop" || key === "cook" ? undefined : value)) : "");
@@ -157,6 +158,7 @@ export function createSound(): Sound {
         phase: state.phase,
         pots: new Map(Object.entries(state.tileItems).map(([index, item]) => [Number(index), potStage(item)])),
         dashing: (me?.dashTime ?? 0) > 0,
+        fires: Object.keys(state.fires ?? {}).length,
       };
       const before = heard;
       heard = now;
@@ -173,6 +175,13 @@ export function createSound(): Sound {
         tone(210, 150, 0.05, "square", 0.05);
       }
       if (now.dashing && !before.dashing) noise(0.16, 0.14, 900);
+      // A two-tone alarm for each new fire, a hiss while spraying and a soft chime when the last one is out.
+      if (now.fires > before.fires) notes([740, 554, 740, 554], 0.13, "square", 0.07);
+      else if (now.fires === 0 && before.fires > 0) notes([523, 659, 784], 0.09, "sine", 0.08);
+      if (me?.spraying && performance.now() - lastChop > CHOP_EVERY_MS) {
+        lastChop = performance.now();
+        noise(0.2, 0.16, 5200);
+      }
 
       if (now.delivered > before.delivered) notes([660, 880, 1320], 0.07);
       else if (now.score < before.score && now.phase === "playing") tone(240, 130, 0.32, "sawtooth", 0.08);

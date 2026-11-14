@@ -25,6 +25,8 @@ import {
   type ProgressBar,
 } from "./models";
 import { animateChef, createChef, type ChefRig } from "./chef";
+import { animateFire, animateSpray, createFire, createSpray, type FireView } from "./fire";
+import { SPRAY_RANGE } from "../shared/sim";
 
 const EMPTY_STATE = {
   players: [],
@@ -34,6 +36,7 @@ const EMPTY_STATE = {
   plates: null,
   dirty: 0,
   wash: { dirty: 0, clean: 0, progress: 0 },
+  fires: {},
 } as unknown as GameState;
 // Aimed a little behind the kitchen centre, which leaves the top of the screen free for order tickets.
 const CAMERA_HOME = new THREE.Vector3(0, 18, 12.2);
@@ -51,6 +54,7 @@ interface ChefView {
   rig: ChefRig;
   isLocal: boolean;
   held: ItemView | null;
+  spray: THREE.Group;
 }
 
 interface Popup {
@@ -153,6 +157,10 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
   const bars = new Map<number, ProgressBar>();
   const potFx = new Map<number, { badge: THREE.Sprite; steam: THREE.Group }>();
   const popping = new Set<THREE.Object3D>();
+  const fires = new Map<number, FireView>();
+  // One shared light stands in for every fire, placed at their middle.
+  const fireGlow = new THREE.PointLight(0xff7a2a, 0, 6, 2);
+  world.add(fireGlow);
   const popups: Popup[] = [];
   let lastScore: number | null = null;
   let lastDelivered = 0;
@@ -165,9 +173,11 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
     for (const view of resting.values()) view.mesh.removeFromParent();
     for (const bar of bars.values()) bar.group.removeFromParent();
     for (const fx of potFx.values()) world.remove(fx.badge, fx.steam);
+    for (const fire of fires.values()) fire.group.removeFromParent();
     resting.clear();
     bars.clear();
     potFx.clear();
+    fires.clear();
     world.remove(room, stations.group);
     washBar?.group.removeFromParent();
     washBar = null;
@@ -233,7 +243,8 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
       }
 
       // Pots get a badge (fill count, READY!, BURNT) and steam while they are hot.
-      const status = item ? potStatus(item) : null;
+      const onHob = level.tiles[index].kind === "stove";
+      const status = item ? potStatus(item, onHob) : null;
       let fx = potFx.get(index);
       if (status && !fx) {
         fx = { badge: createLabel(""), steam: createSteam() };
@@ -265,7 +276,7 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
         bubble.scale.setScalar(0.3 + pulse * 1.1);
       });
 
-      const progress = item ? itemProgress(item) : null;
+      const progress = item ? itemProgress(item, onHob) : null;
       let bar = bars.get(index);
       if (progress && !bar) {
         bar = createProgressBar();
@@ -283,13 +294,43 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
     }
   };
 
+  // Adds, flickers and removes the flames on burning worktops, and moves the shared glow to their middle.
+  const syncFires = (state: GameState, time: number) => {
+    const burning = state.fires ?? {};
+    for (const [index, fire] of fires) {
+      if (burning[index] !== undefined) continue;
+      fire.group.removeFromParent();
+      fires.delete(index);
+    }
+    let sumX = 0;
+    let sumZ = 0;
+    let count = 0;
+    for (const key of Object.keys(burning)) {
+      const index = Number(key);
+      const { x, z } = tileCentre(index);
+      let fire = fires.get(index);
+      if (!fire) {
+        fire = createFire();
+        fire.group.position.set(x, WORKTOP_Y + 0.02, z);
+        world.add(fire.group);
+        fires.set(index, fire);
+      }
+      animateFire(fire, time, burning[index], index);
+      sumX += x;
+      sumZ += z;
+      count += 1;
+    }
+    fireGlow.intensity = count === 0 ? 0 : Math.min(3, count) * 1.6 * (0.85 + Math.sin(time * 17) * 0.15);
+    if (count > 0) fireGlow.position.set(sumX / count, WORKTOP_Y + 1.2, sumZ / count);
+  };
+
   const removeChef = (id: number, view: ChefView) => {
     if (view.held) popping.delete(view.held.mesh);
     view.rig.group.removeFromParent();
     chefs.delete(id);
   };
 
-  const syncChefs = (state: GameState, localId: number | null, dt: number) => {
+  const syncChefs = (state: GameState, localId: number | null, dt: number, time: number) => {
     for (const [id, view] of chefs) {
       const player = state.players.find((other) => other.id === id);
       // A rig built before we knew our own seat is rebuilt so the right chef gets the bright ring.
@@ -300,7 +341,8 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
       let view = chefs.get(player.id);
       if (!view) {
         const isLocal = player.id === localId;
-        view = { rig: createChef(player.id, isLocal), isLocal, held: null };
+        view = { rig: createChef(player.id, isLocal), isLocal, held: null, spray: createSpray() };
+        view.rig.group.add(view.spray);
         view.rig.group.rotation.y = player.facing;
         world.add(view.rig.group);
         chefs.set(player.id, view);
@@ -316,6 +358,8 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
       animateChef(view.rig, player, dt);
       view.held = syncItem(view.held, player.held, view.rig.body);
       view.held?.mesh.position.set(0, 0.42, 0.42);
+      view.spray.visible = Boolean(player.spraying);
+      if (view.spray.visible) animateSpray(view.spray, time, SPRAY_RANGE);
     }
   };
 
@@ -370,8 +414,14 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
     renderer.setSize(clientWidth, clientHeight, false);
     camera.aspect = clientWidth / clientHeight;
     // Pull the camera back on narrow screens so the whole kitchen stays in frame.
-    camera.position.copy(CAMERA_HOME).multiplyScalar(Math.max(1, 1.6 / camera.aspect) / DEBUG_ZOOM);
+    // A short screen (a phone held sideways) loses its top to the score and tickets, so the kitchen is drawn a little smaller and lower.
+    const squeeze = 1 - Math.min(1, clientHeight / 460);
+    // Wide windows keep the dining room in view; an upright phone gives that up so the kitchen itself is larger.
+    const fit = 1.6 - 0.3 * Math.min(1, Math.max(0, (1 - camera.aspect) / 0.44));
+    camera.position.copy(CAMERA_HOME).multiplyScalar((Math.max(1, fit / camera.aspect) * (1 + squeeze * 0.35)) / DEBUG_ZOOM);
     camera.lookAt(CAMERA_TARGET);
+    if (squeeze > 0) camera.setViewOffset(clientWidth, clientHeight, 0, -squeeze * 0.36 * clientHeight, clientWidth, clientHeight);
+    else camera.clearViewOffset();
     camera.updateProjectionMatrix();
     // Fog starts behind the kitchen wherever the camera ends up, so only the far ground fades out.
     const distance = camera.position.length();
@@ -402,7 +452,8 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
         const shown = state ?? EMPTY_STATE;
         syncRestingItems(shown, time);
         syncDishes(shown);
-        syncChefs(shown, localId, dt);
+        syncFires(shown, time);
+        syncChefs(shown, localId, dt, time);
         syncMarkers(target, pointed, time);
         if (state) syncPopups(state, dt);
         cheer = Math.max(0, cheer - dt / 1.2);

@@ -12,6 +12,8 @@ export type TileKind =
   // Dish washing: served plates come back dirty at the return hatch and are cleaned at the wash sink.
   | "return"
   | "wash"
+  // Wall bracket where the fire extinguisher starts each round, and the only station that can hold it besides a counter.
+  | "extinguisher"
   // Fixtures that fill a cabinet slot but cannot be used: a sink, a fridge, or a counter with a pot plant on it.
   | "sink"
   | "fridge"
@@ -44,8 +46,8 @@ export interface RoomDecor {
   kitchenFloor?: string;
   // Low wall segment run along both sides of the kitchen.
   halfWall?: string;
-  // A small street frontage outside one side of the restaurant.
-  street?: { side: "back" };
+  // Puts the restaurant on a town block: shops and a road behind it, a park, a parking lot and a front terrace.
+  street?: { side: "back"; season?: "spring" | "summer" | "autumn" | "winter" };
   // Any other props, placed as they are.
   extras?: Array<{ model: string; x: number; z: number; turn?: number; scale?: number }>;
 }
@@ -68,6 +70,17 @@ export interface Level {
   decor: Decor;
   // How many plates the kitchen owns; when set, plates run out and must be washed after each order.
   plates?: number;
+  // When set, a pot left on the hob after burning sets the kitchen on fire.
+  fire?: boolean;
+  // How hard the kitchen is, from 1 to 5, shown as dots in the kitchen picker.
+  difficulty: number;
+}
+
+// Rules a kitchen adds on top of plain cooking.
+export interface LevelRules {
+  plates?: number;
+  fire?: boolean;
+  difficulty?: number;
 }
 
 // One character per tile; S is a floor tile that also marks a spawn point.
@@ -85,6 +98,7 @@ const LEGEND: Record<string, Tile> = {
   W: { kind: "serve" },
   R: { kind: "return" },
   Q: { kind: "wash" },
+  E: { kind: "extinguisher" },
   K: { kind: "sink" },
   F: { kind: "fridge" },
   V: { kind: "plant" },
@@ -96,10 +110,10 @@ export function parseLevel(
   recipes: RecipeId[],
   decor: Decor,
   rows: string[],
-  plates?: number,
+  rules: LevelRules = {},
 ): Level {
   const width = rows[0].length;
-  const level: Level = { name, width, height: rows.length, tiles: [], spawns: [], target, recipes, decor, plates };
+  const level: Level = { name, width, height: rows.length, tiles: [], spawns: [], target, recipes, decor, difficulty: 1, ...rules };
   rows.forEach((row, tz) => {
     if (row.length !== width) throw new Error(`Level row ${tz} has the wrong width`);
     [...row].forEach((char, tx) => {
@@ -125,12 +139,15 @@ export const isFixture = (tile: Tile): boolean => tile.kind === "sink" || tile.k
 export const holdsItems = (tile: Tile): boolean =>
   tile.kind === "counter" || tile.kind === "board" || tile.kind === "stove";
 
+// Fire only takes hold of worktops; crates, sinks and the serving window never burn.
+export const burns = holdsItems;
+
 // Clearing one kitchen unlocks the next; they must all share one size, which the camera is framed for.
 export const LEVELS: Level[] = [
   // A homely kitchen: farmhouse sink, cream fridge and small pot plants on the corner counters.
   parseLevel(
     "Open Kitchen",
-    60,
+    320,
     ["lettuce_salad", "salad", "soup"],
     {
       sink: "sink_farmhouse",
@@ -150,6 +167,7 @@ export const LEVELS: Level[] = [
         outerWall: "wall_brick",
         sideWalls: ["wall_window", "wall_brick"],
         margin: 6,
+        street: { side: "back", season: "summer" },
         tables: [
           { model: "dining_round", x: -3.6, z: 1.5, guests: ["guest_coral", "guest_blue"] },
           { model: "dining_square", x: -3.6, z: 4.3, guests: ["guest_mint", ""] },
@@ -181,7 +199,7 @@ export const LEVELS: Level[] = [
   // A working line: prep on the left, cooking and serving on the right, joined only by the gap in the divider.
   parseLevel(
     "The Pass",
-    80,
+    400,
     ["lettuce_salad", "salad", "soup", "onion_soup"],
     {
       sink: "sink_industrial",
@@ -225,7 +243,7 @@ export const LEVELS: Level[] = [
       },
     },
     [
-      "F#T#L#N#KP##V",
+      "F#T#L##NKP##V",
       "#S....#....S#",
       "B.....#.....O",
       "B.....#.....O",
@@ -235,11 +253,12 @@ export const LEVELS: Level[] = [
       "#S....#....SW",
       "V##X#########",
     ],
+    { difficulty: 2 },
   ),
   // Three rooms in a zigzag (pantry, stoves, pass) and only four plates, so somebody has to wash up.
   parseLevel(
     "Rush Hour",
-    70,
+    360,
     ["lettuce_salad", "salad", "soup", "onion_soup"],
     {
       sink: "sink_single",
@@ -250,6 +269,7 @@ export const LEVELS: Level[] = [
         outerWall: "wall_brick",
         sideWalls: ["wall_brick", "wall_window"],
         margin: 6,
+        street: { side: "back", season: "autumn" },
         floor: "/textures/customer-floor.svg",
         halfWall: "kitchen-halfwall-brick",
         tables: [
@@ -279,6 +299,109 @@ export const LEVELS: Level[] = [
       "#.......#...#",
       "V#####X###R#V",
     ],
-    4,
+    { plates: 4, difficulty: 3 },
+  ),
+  // One long island of hobs between the pantry and the pass: soups everywhere, and a forgotten pot starts a fire.
+  parseLevel(
+    "Hot Line",
+    380,
+    ["soup", "onion_soup", "salad"],
+    {
+      sink: "sink_wood_double",
+      fridge: "fridge_cream",
+      plants: ["plant_succulent", "plant_lime"],
+      room: {
+        backWall: [
+          "wall_brick",
+          "wall_teal_backsplash",
+          "wall_window",
+          "wall_teal_backsplash",
+          "wall_window",
+          "wall_teal_backsplash",
+          "wall_brick",
+        ],
+        outerWall: "wall_brick",
+        sideWalls: ["wall_brick", "wall_window"],
+        margin: 6,
+        street: { side: "back", season: "winter" },
+        tables: [
+          { model: "dining_booth", x: -3.6, z: 1.5, guests: ["guest_mint", "guest_coral"] },
+          { model: "dining_booth", x: -3.6, z: 4.3, guests: ["guest_blue", ""] },
+          { model: "dining_round", x: -3.6, z: 7.1, guests: ["guest_mustard", "guest_mint"] },
+          { model: "dining_booth", x: 16.6, z: 1.5, guests: ["", "guest_blue"] },
+          { model: "dining_booth", x: 16.6, z: 4.3, guests: ["guest_coral", "guest_mustard"] },
+          { model: "dining_round", x: 16.6, z: 7.1, guests: ["guest_blue", ""] },
+        ],
+        plants: [
+          { model: "plant_bamboo", x: -5.7, z: 0.5 },
+          { model: "plant_tropical", x: 18.7, z: 0.5 },
+          { model: "plant_pink", x: 0.4, z: 10.4 },
+          { model: "plant_blossom", x: 12.6, z: 10.4 },
+        ],
+      },
+    },
+    [
+      "V#T#L#N####EV",
+      "#S.........S#",
+      "#...........#",
+      "#.#OO#O#BB#.#",
+      "#...........#",
+      "#...........#",
+      "#S.........SW",
+      "#...........W",
+      "V##X##P#####V",
+    ],
+    { fire: true, difficulty: 4 },
+  ),
+  // The finale: four rooms round a cross of counters, five plates to keep washing, and three hobs that can catch fire.
+  parseLevel(
+    "Full House",
+    420,
+    ["lettuce_salad", "salad", "soup", "onion_soup"],
+    {
+      sink: "sink_industrial",
+      fridge: "fridge_retro",
+      plants: ["plant_tropical", "plant_pink"],
+      room: {
+        backWall: Array.from({ length: 7 }, (_, i) => (i % 2 ? "wall_window" : "wall-dressing-panel")),
+        outerWall: "wall_brick",
+        sideWalls: ["wall_window", "wall_brick"],
+        margin: 6,
+        floor: "/textures/customer-floor.svg",
+        kitchenFloor: "/textures/kitchen-floor-checker.svg",
+        halfWall: "kitchen-halfwall-brick",
+        street: { side: "back" },
+        tables: [
+          { model: "dining-set-gingham", x: -3.6, z: 1.6, guests: ["guest_blue", "guest_mint", "guest_coral", ""] },
+          { model: "dining_round", x: -3.6, z: 4.4, guests: ["guest_mustard", "guest_coral"] },
+          { model: "dining-set-gingham", x: -3.6, z: 7.3, guests: ["", "guest_blue", "", "guest_mustard"] },
+          { model: "dining-set-gingham", x: 16.6, z: 1.6, guests: ["guest_coral", "", "guest_mint", "guest_blue"] },
+          { model: "dining_round", x: 16.6, z: 4.4, guests: ["guest_mint", "guest_blue"] },
+          { model: "dining-set-gingham", x: 16.6, z: 7.3, guests: ["guest_mustard", "guest_coral", "", ""] },
+        ],
+        plants: [
+          { model: "plant_blossom", x: -5.7, z: 0.5 },
+          { model: "plant_pink", x: 18.7, z: 0.5 },
+          { model: "plant_bamboo", x: -5.7, z: 9.6 },
+          { model: "plant_tropical", x: 18.7, z: 9.6 },
+        ],
+        extras: [
+          { model: "dining-detail-pack", x: 2.2, z: 10.1, scale: 1.15 },
+          { model: "dining-detail-pack", x: 10.8, z: 10.1, scale: 1.15 },
+        ],
+      },
+    },
+    [
+      "VTLN###OOO#PV",
+      "#S....#....S#",
+      "#...........X",
+      "#.....#.....#",
+      "###.#####.###",
+      "#.....#.....W",
+      "E.....Q.....W",
+      "#S....#....S#",
+      "V#BB#X###R##V",
+    ],
+    { plates: 5, fire: true, difficulty: 5 },
   ),
 ];
