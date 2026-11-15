@@ -28,7 +28,9 @@ import {
 } from "./models";
 import { animateChef, createChef, type ChefRig } from "./chef";
 import { animateFire, animateSpray, createFire, createSpray, type FireView } from "./fire";
+import { createDashFx } from "./dash";
 import { BELT_SECONDS, beltMoves, SPRAY_RANGE } from "../shared/sim";
+import { getZoom, onZoom } from "./settings";
 
 const EMPTY_STATE = {
   players: [],
@@ -181,6 +183,7 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
   let beltItems: Record<number, Item> = {};
   const suds = createSuds();
   world.add(suds);
+  const dashFx = createDashFx(world);
   // Night kitchens dim the daylight; these are the daytime values to return to.
   const daylight = { hemi: 0.38, key: 2.9, fill: 0.4, exposure: 0.92, env: 0.22 };
 
@@ -499,16 +502,43 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
     const squeeze = 1 - Math.min(1, clientHeight / 460);
     // Wide windows keep the dining room in view; an upright phone gives that up so the kitchen itself is larger.
     const fit = 1.6 - 0.3 * Math.min(1, Math.max(0, (1 - camera.aspect) / 0.44));
-    camera.position.copy(CAMERA_HOME).multiplyScalar((Math.max(1, fit / camera.aspect) * (1 + squeeze * 0.35)) / DEBUG_ZOOM);
-    camera.lookAt(CAMERA_TARGET);
+    framing = (Math.max(1, fit / camera.aspect) * (1 + squeeze * 0.35)) / DEBUG_ZOOM;
     if (squeeze > 0) camera.setViewOffset(clientWidth, clientHeight, 0, -squeeze * 0.36 * clientHeight, clientWidth, clientHeight);
     else camera.clearViewOffset();
     camera.updateProjectionMatrix();
+    placeCamera();
+  };
+
+  // How far back the camera sits to frame the whole kitchen on this screen, before the player's own zoom.
+  let framing = 1;
+  // The point the camera centres on: the kitchen's middle, drifting towards the local chef as the player zooms in,
+  // so a close-up view keeps them in shot. It eases along rather than snapping to every step.
+  const focus = new THREE.Vector3();
+  const wantedFocus = new THREE.Vector3();
+  const placeCamera = () => {
+    camera.position.copy(CAMERA_HOME).multiplyScalar(framing / getZoom()).add(focus);
+    camera.lookAt(CAMERA_TARGET.x + focus.x, CAMERA_TARGET.y, CAMERA_TARGET.z + focus.z);
     // Fog starts behind the kitchen wherever the camera ends up, so only the far ground fades out.
-    const distance = camera.position.length();
+    const distance = camera.position.distanceTo(focus);
     fog.near = distance + 8;
     fog.far = distance + 40;
   };
+  const followChef = (state: GameState, localId: number | null, dt: number) => {
+    const zoom = getZoom();
+    const me = state.players.find((player) => player.id === localId);
+    // Fully on the chef from about 1.5x; at 1x and below the whole kitchen stays centred.
+    const follow = me ? Math.min(1, Math.max(0, (zoom - 1) / 0.5)) : 0;
+    const halfW = level.width / 2;
+    const halfH = level.height / 2;
+    wantedFocus.set(
+      Math.max(-halfW, Math.min(halfW, (me?.x ?? halfW) - halfW)) * follow,
+      0,
+      Math.max(-halfH, Math.min(halfH, (me?.z ?? halfH) - halfH)) * follow,
+    );
+    focus.lerp(wantedFocus, 1 - Math.exp(-5 * dt));
+    placeCamera();
+  };
+  onZoom(() => placeCamera());
   // The canvas is measured after layout rather than on the window's resize event: iOS fires that event mid-rotation,
   // before the page has its new size, which left the old drawing buffer stretched over the new shape (a squashed kitchen).
   let measured = "";
@@ -550,6 +580,8 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
         animateBelts(stations, dt);
         syncFires(shown, time);
         syncChefs(shown, localId, dt, time);
+        followChef(shown, localId, dt);
+        dashFx.update(shown.players, dt);
         syncMarkers(target, pointed, time);
         if (state) syncPopups(state, dt);
         cheer = Math.max(0, cheer - dt / 1.2);

@@ -13,9 +13,12 @@ const CHARACTERS = ["knight", "barbarian", "mage", "rogue"];
 // hung on the hips, and the body is repainted as a white chef's jacket with furry arms and dark trousers.
 interface AnimalLook {
   base: (typeof CHARACTERS)[number];
+  // Colour of the arms: fur for the animals, satin gloves for Icy.
   fur: number;
   jacket?: number;
   trousers?: number;
+  // What hangs on the hips, if not the animal's tail.
+  hips?: string;
 }
 const ANIMALS: Record<string, AnimalLook> = {
   mouse: { base: "rogue", fur: 0xa7abb8 },
@@ -26,11 +29,13 @@ const ANIMALS: Record<string, AnimalLook> = {
   fox: { base: "rogue", fur: 0xe8692a },
   pig: { base: "barbarian", fur: 0xf4a7b5 },
   elephant: { base: "barbarian", fur: 0x9aa7c4, trousers: 0x4a4f63 },
+  icy: { base: "rogue", fur: 0xfff4fa, jacket: 0xf7a8c8, trousers: 0xf7a8c8, hips: "skirt_icy" },
 };
 const TAILLESS = new Set(["frog"]);
 
 // Decoration props the animal chefs need, for loading with the kitchen's own.
-export const CHEF_PROPS = Object.keys(ANIMALS).flatMap((id) => [`head_${id}`, ...(TAILLESS.has(id) ? [] : [`tail_${id}`])]);
+const hipsProp = (id: string): string | null => ANIMALS[id]?.hips ?? (TAILLESS.has(id) ? null : `tail_${id}`);
+export const CHEF_PROPS = Object.keys(ANIMALS).flatMap((id) => [`head_${id}`, hipsProp(id) ?? []].flat());
 
 type ClipName = "idle" | "run" | "idleLegs" | "runLegs" | "carry" | "chop";
 const CLIP_NAMES: ClipName[] = ["idle", "run", "idleLegs", "runLegs", "carry", "chop"];
@@ -86,6 +91,8 @@ export interface ChefRig {
   arms: Array<THREE.Object3D | null>;
   scrub: number;
   time: number;
+  // The character model itself, which leans forward into a dash.
+  figure: THREE.Object3D;
 }
 
 // A chef's toque, sized in the character pack's units and worn on the head bone.
@@ -185,6 +192,7 @@ export function createChef(seat: number, isLocal: boolean, character: string = s
     arms: [figure.getObjectByName("upperarml") ?? null, figure.getObjectByName("upperarmr") ?? null],
     scrub: 0,
     time: 0,
+    figure,
   };
 }
 
@@ -202,7 +210,8 @@ function dressAnimal(figure: THREE.Object3D, id: string, look: AnimalLook): void
   });
   const head = decoration(`head_${id}`);
   if (head) figure.getObjectByName("head")?.add(head);
-  const tail = TAILLESS.has(id) ? null : decoration(`tail_${id}`);
+  const hips = hipsProp(id);
+  const tail = hips ? decoration(hips) : null;
   if (tail) figure.getObjectByName("hips")?.add(tail);
   for (const part of [head, tail]) part?.traverse((child) => (child.castShadow = true));
 }
@@ -253,6 +262,12 @@ export function animateChef(rig: ChefRig, player: PlayerState, dt: number): void
   rig.knife.visible = player.chopping;
   rig.sponge.visible = washing;
   rig.mixer.update(dt);
+
+  // A cartoon dash: the chef pitches forward into it and springs back upright after.
+  const lean = player.dashTime > 0 ? 0.42 : 0;
+  rig.figure.rotation.x += (lean - rig.figure.rotation.x) * (1 - Math.exp(-(lean > 0 ? 30 : 10) * dt));
+  const stretch = 1 + rig.figure.rotation.x * 0.15;
+  rig.figure.scale.set(MODEL_SCALE / Math.sqrt(stretch), MODEL_SCALE * stretch, MODEL_SCALE / Math.sqrt(stretch));
 
   // Scrubbing is layered on top of the clips: lean over the sink and work the sponge round in circles.
   rig.time += dt;

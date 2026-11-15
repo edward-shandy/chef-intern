@@ -219,7 +219,59 @@ function elephant() {
   return { head, tail: tailGroup };
 }
 
-const ANIMALS = { mouse, cat, bear, frog, penguin, fox, pig, elephant };
+// Icy, the princess chef: long wavy hair, a jewelled tiara in front of the toque, and a bell gown in place of a tail.
+function icy() {
+  const skin = 0xf6d2bd;
+  const hair = 0x6b3a26;
+  const gold = 0xe8b84a;
+  const gown = 0xf7a8c8;
+  const head = new THREE.Group();
+  add(head, ball(0.5, 28), mat(hair), [0, 0.5, -0.07], [1.04, 1, 1]);
+  add(head, ball(0.45, 28), mat(skin), [0, 0.44, 0.05], [1, 1, 0.95]);
+  // Side-swept fringe across the forehead.
+  for (const [x, y, s] of [[-0.22, 0.79, 0.15], [-0.06, 0.83, 0.16], [0.12, 0.81, 0.15], [0.27, 0.74, 0.13]]) {
+    add(head, ball(s, 16), mat(hair), [x, y, 0.27], [1.3, 0.75, 0.8], [0, 0, -0.35]);
+  }
+  // Long waves down the back and a curled lock beside each cheek.
+  add(head, ball(0.42, 22), mat(hair), [0, 0.12, -0.3], [1.05, 1.45, 0.62]);
+  for (const side of [-1, 1]) {
+    add(head, ball(0.14, 14), mat(hair), [side * 0.4, 0.3, 0.02], [0.9, 1.5, 0.8]);
+    add(head, ball(0.11, 14), mat(hair), [side * 0.43, 0.08, 0.06]);
+    add(head, ball(0.12, 14), mat(hair), [side * 0.28, -0.12, -0.22]);
+  }
+  // Big eyes with a lash flick at the outer corner, rosy cheeks and a small smile.
+  pair(head, ball(0.07, 14), mat(INK, 0.25), [0.16, 0.48, 0.45], [0.9, 1.25, 0.7]);
+  pair(head, ball(0.025, 8), mat(0xffffff, 0.2), [0.14, 0.52, 0.5]);
+  pair(head, box(0.07, 0.018, 0.02), mat(INK), [0.23, 0.56, 0.42], [1, 1, 1], [0, 0.5, 0.55]);
+  pair(head, ball(0.07, 12), mat(BLUSH, 0.8), [0.27, 0.36, 0.38], [1, 0.55, 0.35], [0, 0.6, 0]);
+  add(head, ball(0.025, 8), mat(0xe8a890), [0, 0.4, 0.5]);
+  add(head, new THREE.TorusGeometry(0.07, 0.014, 6, 16, Math.PI), mat(0xc2405a), [0, 0.32, 0.48], [1, 0.8, 1], [0, 0, Math.PI]);
+  pair(head, ball(0.03, 8), mat(gold, 0.3), [0.44, 0.34, 0.06]);
+  // A gold tiara sitting on the fringe, just in front of the toque's band, with a pink jewel on each point.
+  // It wraps the front of the head below the toque, and its points stand up in front of the toque's band.
+  const TIARA_Y = 0.76;
+  const TIARA_R = 0.47;
+  const band = add(head, new THREE.TorusGeometry(TIARA_R, 0.03, 8, 32, Math.PI), mat(gold, 0.3), [0, TIARA_Y, 0.04], [1, 1, 1.05], [Math.PI / 2, 0, 0]);
+  band.rotation.z = Math.PI;
+  for (const [angle, height, gem] of [[0, 0.24, 0.05], [-0.42, 0.17, 0.036], [0.42, 0.17, 0.036], [-0.85, 0.11, 0.028], [0.85, 0.11, 0.028]]) {
+    const x = Math.sin(angle) * (TIARA_R + 0.02);
+    const z = Math.cos(angle) * (TIARA_R + 0.02) * 1.05 + 0.04;
+    add(head, cone(0.05, height, 4), mat(gold, 0.3), [x, TIARA_Y + height / 2, z], [1, 1, 0.45], [0, angle, 0]);
+    add(head, ball(gem, 10), mat(0xff5c9a, 0.15), [x, TIARA_Y + 0.05, z + 0.035]);
+  }
+  // The gown: a bell skirt from the waist, gold at the waist and a white ruffle at the hem.
+  const skirt = new THREE.Group();
+  add(skirt, cyl(0.4, 0.78, 0.74, 28), mat(gown), [0, -0.26, 0]);
+  add(skirt, new THREE.TorusGeometry(0.4, 0.04, 8, 28), mat(gold, 0.3), [0, 0.1, 0], [1, 1, 1], [Math.PI / 2, 0, 0]);
+  add(skirt, new THREE.TorusGeometry(0.78, 0.06, 8, 36), mat(WHITE), [0, -0.62, 0], [1, 1, 1], [Math.PI / 2, 0, 0]);
+  for (let i = 0; i < 8; i++) {
+    const angle = (i / 8) * Math.PI * 2;
+    add(skirt, ball(0.05, 10), mat(0xff5c9a, 0.3), [Math.sin(angle) * 0.63, -0.42, Math.cos(angle) * 0.63]);
+  }
+  return { head, tail: skirt, tailName: "skirt_icy" };
+}
+
+const ANIMALS = { mouse, cat, bear, frog, penguin, fox, pig, elephant, icy };
 
 const exporter = new GLTFExporter();
 const write = async (name, object) => {
@@ -231,7 +283,7 @@ const write = async (name, object) => {
   console.log(`wrote public/props/${name}.glb (${(glb.byteLength / 1024).toFixed(1)} KB)`);
 };
 for (const [name, build] of Object.entries(ANIMALS)) {
-  const { head, tail: tailGroup } = build();
+  const { head, tail: tailGroup, tailName } = build();
   await write(`head_${name}`, head);
-  if (tailGroup) await write(`tail_${name}`, tailGroup);
+  if (tailGroup) await write(tailName ?? `tail_${name}`, tailGroup);
 }

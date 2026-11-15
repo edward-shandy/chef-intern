@@ -7,6 +7,7 @@ import { isCharacter } from "../shared/characters";
 import { createChefPicker } from "./lobbySteps";
 import { renderPortraits } from "./portraits";
 import { wireFullscreen } from "./fullscreen";
+import { preventPageZoom, wireCanvasZoom, wireMenu } from "./settings";
 import { createGuide } from "./guide";
 import { createHud } from "./hud";
 import { createKeyboard } from "./input";
@@ -29,10 +30,8 @@ function wireAudioButtons(): void {
   const mute = element("#mute");
   const music = element("#music");
   const render = () => {
-    mute.textContent = sound.muted ? "Sound off" : "Sound on";
-    mute.setAttribute("aria-pressed", String(sound.muted));
-    music.textContent = sound.musicOn ? "Music on" : "Music off";
-    music.setAttribute("aria-pressed", String(!sound.musicOn));
+    mute.setAttribute("aria-checked", String(!sound.muted));
+    music.setAttribute("aria-checked", String(sound.musicOn));
   };
   mute.addEventListener("click", () => {
     sound.toggleMute();
@@ -215,6 +214,8 @@ function playRoom(roomCode: string): void {
     const touch = wantsTouchControls() ? createTouchControls() : null;
     const canvas = element<HTMLCanvasElement>("#game");
     const view = createKitchenView(canvas, currentLevel());
+    wireCanvasZoom(canvas);
+    menu.showZoom();
 
     // The pointer only ever picks stations; walking is keyboard or stick only.
     const pointer = { tile: null as number | null, movedAt: 0, chopping: false };
@@ -281,6 +282,10 @@ function playRoom(roomCode: string): void {
       view.setLevel(currentLevel());
       const me = localPlayer();
       const target = me && shown?.phase !== "over" ? targetTile(currentLevel(), me, aim) : null;
+      // The touch hold button says what holding it will do: spray with the extinguisher in hand, scrub at the sink, else chop.
+      touch?.setHoldAction(
+        me?.held?.type === "extinguisher" ? "spray" : target !== null && currentLevel().tiles[target].kind === "wash" ? "wash" : "chop",
+      );
       canvas.style.cursor = aim === null ? "default" : "pointer";
       // A pointed-at station that is not the active target is out of reach, and gets its own outline.
       return { state: shown, localId: world.localId, target, pointed: pointer.tile === target ? null : pointer.tile };
@@ -315,6 +320,8 @@ function playRoom(roomCode: string): void {
   });
 }
 
+preventPageZoom();
+const menu = wireMenu();
 wireAudioButtons();
 wireFullscreen();
 if (ROOM_CODE_PATTERN.test(requested)) playRoom(requested);

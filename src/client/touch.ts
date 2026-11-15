@@ -9,8 +9,13 @@ export interface TouchSample {
   interact: boolean;
 }
 
+// What the hold button does right now, which is what it says on it.
+export type HoldAction = "chop" | "wash" | "spray";
+
 export interface TouchControls {
   sample(): TouchSample;
+  // Relabels the hold button for whatever holding it will do.
+  setHoldAction(action: HoldAction): void;
   // When the stick was last touched, so a tapped station can yield back to the facing direction.
   movedAt(): number;
 }
@@ -101,7 +106,21 @@ export function createTouchControls(): TouchControls {
     button.addEventListener("pointerleave", release);
   }
 
+  const holdButton = root.querySelector<HTMLElement>(".touch-chop")!;
+  const HOLD_LABELS: Record<HoldAction, string> = { chop: "Chop", wash: "Wash", spray: "Spray" };
+  let holdAction: HoldAction = "chop";
+
   return {
+    setHoldAction(action) {
+      if (action === holdAction) return;
+      holdAction = action;
+      holdButton.textContent = HOLD_LABELS[action];
+      holdButton.dataset.mode = action;
+      // A little pop so the change catches the eye mid-game.
+      holdButton.classList.remove("swap");
+      void holdButton.offsetWidth;
+      holdButton.classList.add("swap");
+    },
     movedAt: () => state.movedAt,
     sample() {
       const sample = { moveX: state.moveX, moveZ: state.moveZ, use: state.chopping, dash: state.dash, interact: state.interact };

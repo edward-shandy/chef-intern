@@ -34,8 +34,7 @@ export function wireFullscreen(): void {
 
   const render = () => {
     const on = isFullscreen();
-    button.innerHTML = on ? EXIT_ICON : ENTER_ICON;
-    button.setAttribute("aria-label", on ? "Leave full screen" : "Full screen");
+    button.innerHTML = `${on ? EXIT_ICON : ENTER_ICON}<span>${on ? "Leave full screen" : "Full screen"}</span>`;
     button.setAttribute("aria-pressed", String(on));
   };
   render();
