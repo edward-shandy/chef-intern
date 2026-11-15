@@ -3,9 +3,11 @@ import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.j
 import type { Level, TileKind } from "../shared/level";
 import type { Ingredient } from "../shared/recipes";
 import {
+  BELT_SECONDS,
   BURN_AT,
   FIRE_AT,
   isChopped,
+  isRoastable,
   POT_CAPACITY,
   potIsCooked,
   type Item,
@@ -71,7 +73,10 @@ export const COLORS = {
 
 export const WORKTOP_Y = 0.5;
 // How far above the worktop an item rests on each kind of station.
-export const restLift = (kind: TileKind): number => (kind === "board" ? 0.075 : kind === "stove" ? 0.105 : 0);
+export const restLift = (kind: TileKind): number =>
+  kind === "board" ? 0.075 : kind === "stove" ? 0.105 : kind === "grill" ? 0.12 : kind === "belt" ? 0.05 : 0;
+// Stations that heat what rests on them: hobs cook pots and grills roast chickens.
+export const heats = (kind: TileKind): boolean => kind === "stove" || kind === "grill";
 
 // Places a KayKit model in the world, scaled from the pack's grid to ours.
 function prop(name: ModelName, x: number, y: number, z: number, turn = 0, scale = MODEL_SCALE): THREE.Mesh {
@@ -381,10 +386,21 @@ export function createRoom(level: Level, anisotropy: number): THREE.Group {
       solid.add(plant);
     }
     // Two warm lights hang over the dining room so the tables are not left in the kitchen's shadow.
-    for (const x of [-plan.margin / 2, width + plan.margin / 2]) {
-      const glow = new THREE.PointLight(0xffc885, 9, 10, 2);
-      glow.position.set(x, 2.8, height / 2);
-      room.add(glow);
+    // At night the lantern posts and stall bulbs light the room instead.
+    if (!plan.night) {
+      for (const x of [-plan.margin / 2, width + plan.margin / 2]) {
+        const glow = new THREE.PointLight(0xffc885, 9, 10, 2);
+        glow.position.set(x, 2.8, height / 2);
+        room.add(glow);
+      }
+    }
+    for (const extra of plan.night ? (plan.extras ?? []) : []) {
+      const reach = extra.model === "lantern_post" ? 0.42 * Math.cos(extra.turn ?? 0) : 0;
+      if (extra.model === "lantern_post" || extra.model === "market_stall") {
+        const glow = new THREE.PointLight(0xffa860, extra.model === "market_stall" ? 7 : 6, 7, 1.6);
+        glow.position.set(extra.x + reach, extra.model === "market_stall" ? 1.9 : 2.1, extra.z + (extra.model === "market_stall" ? 0.4 : 0));
+        room.add(glow);
+      }
     }
   } else {
     // Without a restaurant plan the back wall is a row of 2-tile KayKit panels, two with windows.
@@ -465,21 +481,75 @@ function part(name: ModelName, x = 0, y = 0, z = 0, turn = 0, scale = 1, ruined 
   return result;
 }
 
-const WHOLE: Record<Ingredient, ModelName> = {
+type Veg = Exclude<Ingredient, "chicken">;
+const WHOLE: Record<Veg, ModelName> = {
   tomato: "food_ingredient_tomato",
   lettuce: "food_ingredient_lettuce",
   onion: "food_ingredient_onion",
 };
-const CHOPPED: Record<Ingredient, ModelName> = {
+const CHOPPED: Record<Veg, ModelName> = {
   tomato: "food_ingredient_tomato_slices",
   lettuce: "food_ingredient_lettuce_chopped",
   onion: "food_ingredient_onion_chopped",
 };
-const CRATES: Record<Ingredient, ModelName> = {
+const CRATES: Record<Veg, ModelName> = {
   tomato: "crate_tomatoes",
   lettuce: "crate_lettuce",
   onion: "crate_onions",
 };
+
+type RoastStage = "raw" | "roast" | "burnt";
+const roastStage = (cook: number): RoastStage => (cook >= BURN_AT ? "burnt" : cook >= 1 ? "roast" : "raw");
+const CHICKEN_SKIN: Record<RoastStage, number> = { raw: 0xf3c0ad, roast: 0xc8752e, burnt: 0x2e2522 };
+
+// A whole chicken in game units, resting on its base: plump body, two drumsticks with bone tips.
+export function createChicken(stage: RoastStage): THREE.Group {
+  const chicken = new THREE.Group();
+  const skin = mat(CHICKEN_SKIN[stage], stage === "roast" ? 0.38 : 0.6);
+  const bone = mat(0xfff3e0, 0.6);
+  const body = mesh(ball(0.15, 18), skin, 0, 0.1, 0);
+  body.scale.set(1.15, 0.72, 0.95);
+  chicken.add(body);
+  for (const side of [-1, 1]) {
+    const thigh = mesh(ball(0.075, 12), skin, side * 0.085, 0.09, 0.11);
+    thigh.scale.set(0.9, 0.85, 1.45);
+    const shank = mesh(cylinder(0.016, 0.016, 0.1, 8), bone, side * 0.095, 0.13, 0.215);
+    shank.rotation.x = 1.15;
+    const knob = mesh(ball(0.027, 10), bone, side * 0.095, 0.155, 0.26);
+    const wing = mesh(ball(0.05, 10), skin, side * 0.16, 0.1, -0.05);
+    wing.scale.set(0.7, 0.6, 1.3);
+    chicken.add(thigh, shank, knob, wing);
+  }
+  if (stage === "roast") {
+    // Charred grill marks across the golden skin.
+    for (const offset of [-0.07, 0, 0.07]) {
+      const mark = mesh(box(0.2, 0.012, 0.022), mat(0x6a3416, 0.5), 0, 0.205, offset);
+      mark.rotation.y = 0.5;
+      chicken.add(mark);
+    }
+  }
+  return chicken;
+}
+
+// A cool box of raw chickens on crushed ice, the chicken's version of a veg crate.
+function createChickenCrate(): THREE.Group {
+  const crate = new THREE.Group();
+  crate.add(
+    mesh(rounded(0.78, 0.26, 0.66, 0.05), mat(0x3d8fe4, 0.45), 0, 0.13, 0),
+    mesh(rounded(0.8, 0.05, 0.68, 0.025), mat(0xfdfdfd, 0.5), 0, 0.26, 0),
+    mesh(box(0.66, 0.02, 0.54), mat(0xd9f1ff, 0.2), 0, 0.27, 0),
+    mesh(box(0.1, 0.05, 0.05), mat(0xfdfdfd, 0.5), -0.41, 0.18, 0),
+    mesh(box(0.1, 0.05, 0.05), mat(0xfdfdfd, 0.5), 0.41, 0.18, 0),
+  );
+  for (const [x, z, turn] of [[-0.17, -0.08, 0.4], [0.17, -0.06, -0.5], [0, 0.14, 2.8]] as const) {
+    const chicken = createChicken("raw");
+    chicken.position.set(x, 0.25, z);
+    chicken.rotation.y = turn;
+    chicken.scale.setScalar(0.85);
+    crate.add(chicken);
+  }
+  return crate;
+}
 
 // Builds an item with its origin at the base so it can sit on any surface.
 export function createItem(item: Item): THREE.Group {
@@ -488,11 +558,14 @@ export function createItem(item: Item): THREE.Group {
   parts.scale.setScalar(MODEL_SCALE);
   group.add(parts);
 
-  if (item.type === "ingredient") {
-    if (!isChopped(item)) parts.add(part(WHOLE[item.kind]));
+  if (item.type === "ingredient" && item.kind === "chicken") {
+    group.add(createChicken(roastStage(item.cook ?? 0)));
+  } else if (item.type === "ingredient") {
+    const kind = item.kind as Veg;
+    if (!isChopped(item)) parts.add(part(WHOLE[kind]));
     // The chopped lettuce model is off-centre, so it is nudged back over its tile.
-    else if (item.kind === "lettuce") parts.add(part(CHOPPED.lettuce, -0.3, 0, 0, 0, 0.9));
-    else parts.add(part(CHOPPED[item.kind]));
+    else if (kind === "lettuce") parts.add(part(CHOPPED.lettuce, -0.3, 0, 0, 0, 0.9));
+    else parts.add(part(CHOPPED[kind]));
   } else if (item.type === "plate") {
     if (item.contents.includes("tomato_soup")) {
       parts.add(part("food_stew"));
@@ -509,6 +582,15 @@ export function createItem(item: Item): THREE.Group {
         );
       }
       if (item.contents.includes("onion")) parts.add(part(CHOPPED.onion, 0, hasLettuce ? 0.15 : 0.08, 0, 0.8, 0.5));
+      if (item.contents.includes("roast_chicken")) {
+        // Served on its own the chicken sits in the middle; in a salad it shares the plate with the leaves.
+        const chicken = createChicken("roast");
+        const alone = item.contents.length === 1;
+        chicken.scale.setScalar(alone ? 0.95 : 0.7);
+        chicken.position.set(alone ? 0 : 0.06, alone ? 0.025 : 0.07, alone ? 0 : 0.04);
+        chicken.rotation.y = 0.6;
+        group.add(chicken);
+      }
     }
   } else if (item.type === "dirty") {
     parts.add(part("plate_dirty"));
@@ -525,7 +607,7 @@ export function createItem(item: Item): THREE.Group {
         const x = Math.cos(angle) * 0.18;
         const z = Math.sin(angle) * 0.18;
         if (item.kind === "tomato") parts.add(part("food_ingredient_tomato_slice", x, 0.1 + i * 0.04, z, angle, 0.6));
-        else parts.add(part(CHOPPED[item.kind], x, 0.08, z, angle, 0.38));
+        else parts.add(part(CHOPPED[item.kind as Veg], x, 0.08, z, angle, 0.38));
       }
     } else if (full && !ruined) {
       // Bubbles are animated by the scene while the pot is on a lit hob.
@@ -546,6 +628,7 @@ export function createItem(item: Item): THREE.Group {
 
 // Changes only when the item needs a different mesh, not on every progress tick.
 export function itemSignature(item: Item): string {
+  if (item.type === "ingredient" && isRoastable(item.kind)) return `i:${item.kind}:${roastStage(item.cook ?? 0)}`;
   if (item.type === "ingredient") return `i:${item.kind}:${isChopped(item)}`;
   if (item.type === "plate") return `p:${item.contents.join("+")}`;
   if (item.type === "dirty") return "d";
@@ -556,16 +639,23 @@ export function itemSignature(item: Item): string {
 
 // Fraction and colour of the progress bar an item should show, if any.
 export function itemProgress(item: Item, onHob = true): { value: number; colour: number } | null {
+  if (item.type === "ingredient" && isRoastable(item.kind)) return cookProgress(item.cook ?? 0, onHob);
   if (item.type === "ingredient") {
     return item.chop > 0 && item.chop < 1 ? { value: item.chop, colour: COLORS.barChop } : null;
   }
-  if (item.type !== "pot" || item.contents < POT_CAPACITY || item.cook <= 0) return null;
-  if (item.cook < 1) return { value: item.cook, colour: COLORS.barCook };
+  if (item.type !== "pot" || item.contents < POT_CAPACITY) return null;
+  return cookProgress(item.cook, onHob);
+}
+
+// The bar for anything cooking on a heat: filling while it cooks, draining while it is safe, red towards a fire.
+function cookProgress(cook: number, onHeat: boolean): { value: number; colour: number } | null {
+  if (cook <= 0) return null;
+  if (cook < 1) return { value: cook, colour: COLORS.barCook };
   // Past burnt, the bar fills red towards the moment the hob catches fire.
-  if (item.cook > BURN_AT && onHob) return { value: (item.cook - BURN_AT) / (FIRE_AT - BURN_AT), colour: COLORS.barBurn };
-  if (!potIsCooked(item.cook)) return null;
+  if (cook > BURN_AT && onHeat) return { value: (cook - BURN_AT) / (FIRE_AT - BURN_AT), colour: COLORS.barBurn };
+  if (!potIsCooked(cook)) return null;
   // Once cooked the bar drains instead, showing how long is left before it burns.
-  const safe = 1 - (item.cook - 1) / (BURN_AT - 1);
+  const safe = 1 - (cook - 1) / (BURN_AT - 1);
   return { value: safe, colour: safe > 0.4 ? COLORS.barChop : COLORS.barBurn };
 }
 
@@ -579,16 +669,18 @@ export interface PotStatus {
 
 // What a pot should announce above itself: how full it is, or how its soup is doing.
 export function potStatus(item: Item, onHob = true): PotStatus | null {
-  if (item.type !== "pot" || item.contents === 0) return null;
+  const roasting = item.type === "ingredient" && isRoastable(item.kind) && (item.cook ?? 0) > 0;
+  if (!roasting && (item.type !== "pot" || item.contents === 0)) return null;
+  const cook = item.type === "pot" || item.type === "ingredient" ? (item.cook ?? 0) : 0;
   const status: PotStatus = { badge: null, badgeColour: LABEL_DARK, steam: "none", ready: false, cooking: false };
-  if (item.contents < POT_CAPACITY || item.cook === 0) {
+  if (item.type === "pot" && (item.contents < POT_CAPACITY || item.cook === 0)) {
     status.badge = `${item.contents}/${POT_CAPACITY}`;
-  } else if (item.cook > BURN_AT && onHob) {
+  } else if (cook > BURN_AT && onHob) {
     // Only kitchens that can burn let a pot heat past burnt.
     Object.assign(status, { badge: "FIRE RISK!", badgeColour: "#d23c2c", steam: "dark", ready: true });
-  } else if (item.cook >= BURN_AT) {
+  } else if (cook >= BURN_AT) {
     Object.assign(status, { badge: "BURNT", badgeColour: "#d23c2c", steam: "dark" });
-  } else if (item.cook >= 1) {
+  } else if (cook >= 1) {
     Object.assign(status, { badge: "READY!", badgeColour: "#2f9e5b", steam: "light", ready: true, cooking: true });
   } else {
     Object.assign(status, { steam: "light", cooking: true });
@@ -606,6 +698,7 @@ const STATION_LABELS: Partial<Record<TileKind, string>> = {
   return: "DIRTY",
   wash: "WASH",
   extinguisher: "FIRE EXT.",
+  grill: "GRILL",
   trash: "TRASH",
 };
 
@@ -654,6 +747,8 @@ export interface Stations {
   washTile: number | null;
   // Middle of the serving windows, where score pop-ups appear.
   serveCentre: THREE.Vector3;
+  // Shared belt texture, scrolled each frame.
+  beltMap: THREE.CanvasTexture;
 }
 
 // Draws every solid tile as a KayKit counter or stove, then dresses each station on top.
@@ -690,6 +785,10 @@ export function createStations(level: Level): Stations {
     roughness: 0.5,
   });
   const hazard = new THREE.MeshStandardMaterial({ map: hazardTexture(), roughness: 0.6 });
+  const beltMap = beltTexture();
+  const beltMaterial = new THREE.MeshStandardMaterial({ map: beltMap, roughness: 0.85 });
+  const coalMaterial = new THREE.MeshStandardMaterial({ color: 0x2a2224, emissive: 0xff4a12, emissiveIntensity: 0.35, roughness: 1 });
+  const emberMaterial = new THREE.MeshStandardMaterial({ color: 0x5a2010, emissive: 0xff6a1a, emissiveIntensity: 1.6, roughness: 1 });
   const flameMaterial = new THREE.MeshBasicMaterial({ color: COLORS.flame });
 
   level.tiles.forEach((tile, index) => {
@@ -749,8 +848,54 @@ export function createStations(level: Level): Stations {
       labels.add(label);
     }
 
-    if (tile.kind === "crate" && tile.dispenses) {
-      group.add(prop(CRATES[tile.dispenses], x, top, z, turn, 0.43));
+    if (tile.kind === "crate" && tile.dispenses === "chicken") {
+      group.add(put(createChickenCrate(), x, top, z, turn));
+    } else if (tile.kind === "crate" && tile.dispenses) {
+      group.add(prop(CRATES[tile.dispenses as Veg], x, top, z, turn, 0.43));
+    } else if (tile.kind === "grill") {
+      // A charcoal grill set into the worktop: steel tray, a bed of embers and a grate across it.
+      group.add(
+        mesh(rounded(0.9, 0.1, 0.9, 0.03), mat(COLORS.darkSteel, 0.45, 0.6), x, top + 0.05, z),
+        mesh(box(0.74, 0.02, 0.74), mat(0x17141a, 0.9), x, top + 0.095, z),
+      );
+      for (let i = 0; i < 14; i++) {
+        const coal = mesh(ball(0.06 + noise(index + i) * 0.03, 7), i % 3 ? coalMaterial : emberMaterial, 0, 0, 0);
+        coal.position.set(x + (noise(index * 3 + i) - 0.5) * 0.6, top + 0.1, z + (noise(index * 7 + i) - 0.5) * 0.6);
+        coal.scale.y = 0.6;
+        group.add(coal);
+      }
+      for (let bar = -3; bar <= 3; bar++) {
+        const rod = mesh(cylinder(0.012, 0.012, 0.8, 6), mat(COLORS.steel, 0.3, 0.8), x + bar * 0.11, top + 0.115, z);
+        rod.rotation.x = Math.PI / 2;
+        group.add(rod);
+      }
+      // Flickering tongues of flame, shown by the scene while something is on the grill.
+      const fire = new THREE.Group();
+      for (let i = 0; i < 8; i++) {
+        const angle = (i / 8) * Math.PI * 2;
+        fire.add(mesh(new THREE.ConeGeometry(0.04, 0.12, 5), flameMaterial, Math.cos(angle) * 0.22, 0.06, Math.sin(angle) * 0.22));
+      }
+      fire.position.set(x, top + 0.08, z);
+      fire.visible = false;
+      flames.set(index, fire);
+      unshadowed.add(fire);
+    } else if (tile.kind === "belt" && tile.dir) {
+      // Rubber belt with chevrons that scroll the way it runs, framed by steel rails where it has no neighbour.
+      const [dx, dz] = tile.dir;
+      const surface = new THREE.Group();
+      const belt = mesh(new THREE.PlaneGeometry(0.98, 0.98), beltMaterial, 0, 0, 0);
+      belt.rotation.x = -Math.PI / 2;
+      surface.add(belt);
+      surface.position.set(x, top + 0.035, z);
+      surface.rotation.y = Math.atan2(-dx, -dz);
+      group.add(mesh(box(1, 0.03, 1), mat(0x2a2630, 0.7), x, top + 0.015, z), surface);
+      for (const [sx, sz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        if (level.tiles[(tz + sz) * level.width + tx + sx]?.kind === "belt" && tx + sx >= 0 && tx + sx < level.width) continue;
+        const along = sx === 0;
+        group.add(
+          mesh(box(along ? 1 : 0.05, 0.07, along ? 0.05 : 1), mat(COLORS.steel, 0.35, 0.7), x + sx * 0.48, top + 0.05, z + sz * 0.48),
+        );
+      }
     } else if (tile.kind === "board") {
       group.add(prop("cuttingboard", x, top, z, turn));
     } else if (tile.kind === "plates" && level.plates) {
@@ -831,7 +976,39 @@ export function createStations(level: Level): Stations {
   group.add(instanced);
   shadowed(group);
   group.add(labels, unshadowed);
-  return { group, flames, serveCentre, plateStack, dirtyPile, sinkDirty, sinkClean, washTile };
+  return { group, flames, serveCentre, plateStack, dirtyPile, sinkDirty, sinkClean, washTile, beltMap };
+}
+
+// Every belt shares one texture, so scrolling it once moves them all.
+export function animateBelts(stations: Stations, dt: number): void {
+  stations.beltMap.offset.y = (stations.beltMap.offset.y - dt / BELT_SECONDS) % 1;
+}
+
+// Rubber with yellow chevrons pointing up the texture, which the belts turn to face the way they run.
+const beltTexture = () => {
+  const texture = canvasTexture(64, 64, (ctx) => {
+    ctx.fillStyle = "#2f2b38";
+    ctx.fillRect(0, 0, 64, 64);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.05)";
+    for (let y = 0; y < 64; y += 8) ctx.fillRect(0, y, 64, 3);
+    ctx.strokeStyle = "#f2c230";
+    ctx.lineWidth = 7;
+    ctx.lineCap = ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(16, 44);
+    ctx.lineTo(32, 26);
+    ctx.lineTo(48, 44);
+    ctx.stroke();
+  });
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  return texture;
+};
+
+// Positions and turns an object, returning it for chaining.
+function put<T extends THREE.Object3D>(object: T, x: number, y: number, z: number, turn = 0): T {
+  object.position.set(x, y, z);
+  object.rotation.y = turn;
+  return object;
 }
 
 // ---------------------------------------------------------------- effects

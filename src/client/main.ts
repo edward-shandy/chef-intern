@@ -3,6 +3,8 @@ import { LEVELS } from "../shared/level";
 import { inReach, targetTile, type GameState, type PlayerInput } from "../shared/sim";
 import { loadModels, loadProps } from "./assets";
 import { loadChefs } from "./chef";
+import { wireFullscreen } from "./fullscreen";
+import { createGuide } from "./guide";
 import { createHud } from "./hud";
 import { createKeyboard } from "./input";
 import { connectRoom, type ConnectionState } from "./net";
@@ -92,6 +94,9 @@ function playRoom(roomCode: string): void {
   // The kitchen changes between rounds, so the layout is always read from the latest snapshot.
   const currentLevel = () => LEVELS[world.latest?.level ?? 0];
   const hud = createHud((level) => room.send({ type: "level", level }));
+  // Each kitchen's briefing pops up in its lobby, and the Guide button brings it back at any time.
+  const guide = createGuide(() => room.send({ type: "ready" }));
+  element("#guide-button").hidden = false;
   element("#room-code").textContent = roomCode;
   element("#leave").addEventListener("click", leaveRoom);
   element("#leave-lobby").addEventListener("click", leaveRoom);
@@ -149,6 +154,7 @@ function playRoom(roomCode: string): void {
         const countChanged = message.players.length !== world.latest?.players.length;
         world.onSnapshot(message, message.acks, now);
         hud.update(message, world.localId);
+        guide.update(message, world.localId);
         sound.update(message, world.localId);
         if (countChanged) renderStatus();
       }
@@ -285,5 +291,6 @@ function playRoom(roomCode: string): void {
 }
 
 wireAudioButtons();
+wireFullscreen();
 if (ROOM_CODE_PATTERN.test(requested)) playRoom(requested);
 else showLobby();

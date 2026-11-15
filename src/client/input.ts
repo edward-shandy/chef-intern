@@ -11,6 +11,11 @@ const HANDLED_KEYS = new Set([
   ...DASH_KEYS,
 ]);
 
+// True while the player is typing in a text box, where game keys must reach the box instead.
+const isTyping = (target: EventTarget | null): boolean =>
+  target instanceof HTMLElement &&
+  (target.isContentEditable || target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT");
+
 // Tracks held keys and hands the simulation one input sample per step.
 export function createKeyboard(): { sample(): PlayerInput; movedAt(): number } {
   const down = new Set<string>();
@@ -18,8 +23,12 @@ export function createKeyboard(): { sample(): PlayerInput; movedAt(): number } {
   let dashQueued = false;
   let movedAt = 0;
 
+  // Leaving a text box should not leave a key stuck from before it got focus.
+  window.addEventListener("focusin", (event) => {
+    if (isTyping(event.target)) down.clear();
+  });
   window.addEventListener("keydown", (event) => {
-    if (!HANDLED_KEYS.has(event.code)) return;
+    if (!HANDLED_KEYS.has(event.code) || isTyping(event.target)) return;
     event.preventDefault();
     if (event.repeat) return;
     down.add(event.code);

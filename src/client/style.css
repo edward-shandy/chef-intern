@@ -485,6 +485,16 @@ kbd {
   background: #d9effb;
 }
 
+.level-tag-grill {
+  color: #7a3d12;
+  background: #fde6c8;
+}
+
+.level-tag-belt {
+  color: #3b2f63;
+  background: #e5defa;
+}
+
 .level-tag-fire {
   color: #a3260f;
   background: #ffe1d6;
@@ -782,7 +792,8 @@ body.touch .hint {
   width: 14px;
 }
 
-.order-icons .order-icon-soup {
+.order-icons .order-icon-soup,
+.order-icons:has(.order-icon-arrow) .order-icon-roast {
   width: 28px;
   height: 28px;
 }
@@ -1114,7 +1125,8 @@ body.touch .hint {
     width: 8px;
   }
 
-  .order-icons:has(.order-icon-arrow) .order-icon-soup {
+  .order-icons:has(.order-icon-arrow) .order-icon-soup,
+  .order-icons:has(.order-icon-arrow) .order-icon-roast {
     width: 18px;
     height: 18px;
   }
@@ -1169,4 +1181,707 @@ body.touch .hint {
   .goal i {
     transition: none;
   }
+}
+
+/* ---- round start: who is ready, then 3-2-1 ---- */
+
+.ready-banner {
+  position: fixed;
+  top: 132px;
+  left: 50%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px 10px;
+  max-width: calc(100vw - 32px);
+  margin: 0;
+  padding: 10px 18px;
+  box-sizing: border-box;
+  border-radius: 18px;
+  font-size: 14px;
+  font-weight: 900;
+  color: var(--ink);
+  background: var(--paper);
+  box-shadow: 0 5px 0 rgb(0 0 0 / 0.3);
+  transform: translateX(-50%);
+}
+
+.ready-banner span {
+  padding: 2px 10px 2px 8px;
+  border-radius: 999px;
+  border-left: 5px solid var(--seat);
+  background: rgb(36 29 48 / 0.07);
+  opacity: 0.6;
+}
+
+.ready-banner span.is-ready {
+  color: #1f7a45;
+  background: #d8f5e2;
+  opacity: 1;
+}
+
+.ready-banner small {
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+.countdown {
+  position: fixed;
+  top: 42%;
+  left: 50%;
+  z-index: 30;
+  margin: 0;
+  font-size: clamp(90px, 18vw, 180px);
+  font-weight: 900;
+  line-height: 1;
+  color: #fff;
+  -webkit-text-stroke: 6px var(--ink);
+  paint-order: stroke fill;
+  text-shadow: 0 8px 0 rgb(0 0 0 / 0.35);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.countdown.pop {
+  animation: countdown-pop 0.9s var(--pop);
+}
+
+@keyframes countdown-pop {
+  from {
+    transform: translate(-50%, -50%) scale(1.8);
+    opacity: 0;
+  }
+  25% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+}
+
+/* ---- kitchen briefing ---- */
+
+.guide {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  box-sizing: border-box;
+  background: rgb(20 15 30 / 0.62);
+  backdrop-filter: blur(3px);
+  animation: guide-fade 0.18s ease-out;
+}
+
+.guide-card {
+  display: flex;
+  flex-direction: column;
+  width: min(820px, 100%);
+  max-height: calc(100dvh - 32px);
+  overflow: hidden;
+  border-radius: 22px;
+  color: var(--ink);
+  background: var(--paper);
+  box-shadow: 0 8px 0 rgb(0 0 0 / 0.35);
+  animation: guide-pop 0.28s var(--pop);
+}
+
+.guide-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 20px 6px;
+}
+
+.guide-head > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.guide-head h2 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.guide-close {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 50%;
+  font: 900 22px/1 inherit;
+  font-family: inherit;
+  color: var(--ink);
+  background: rgb(36 29 48 / 0.08);
+  cursor: pointer;
+}
+
+.guide-body {
+  display: grid;
+  gap: 16px;
+  padding: 8px 20px 16px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.guide-body ul,
+.guide-body ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.guide-label {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--teal);
+}
+
+.guide-label-new {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  color: #fff;
+  background: #d2411f;
+}
+
+.guide-panels {
+  display: grid;
+  gap: 10px;
+}
+
+/* One or two new things get large pictures; the first kitchen's four steps share a row, with arrows between. */
+.guide-hero[data-count="1"] .guide-panels {
+  grid-template-columns: minmax(0, 420px);
+  justify-content: center;
+}
+
+.guide-hero[data-count="2"] .guide-panels {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.guide-hero[data-count="4"] .guide-panels {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 22px;
+}
+
+.guide-hero[data-count="4"] .guide-panel + .guide-panel::before {
+  content: "→";
+  position: absolute;
+  top: 34%;
+  left: -19px;
+  font-size: 20px;
+  font-weight: 900;
+  color: #d2411f;
+}
+
+.guide-panel {
+  position: relative;
+  margin: 0;
+  text-align: center;
+}
+
+.guide-panel figure {
+  margin: 0;
+  overflow: hidden;
+  border-radius: 16px;
+  box-shadow: 0 0 0 2.5px var(--ink), 0 4px 0 2px rgb(36 29 48 / 0.85);
+}
+
+.guide-hero[data-count="1"] figure,
+.guide-hero[data-count="2"] figure {
+  box-shadow: 0 0 0 3px #d2411f, 0 5px 0 3px #a3260f;
+}
+
+.guide-panel svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.guide-panel p {
+  margin: 8px 0 0;
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.guide-panel p b {
+  font-weight: 900;
+}
+
+.guide-panel p span {
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 700;
+  opacity: 0.8;
+}
+
+.guide-body kbd {
+  padding: 1px 7px;
+  border-radius: 6px;
+  font-size: 0.95em;
+  font-weight: 900;
+  color: #fff;
+  background: var(--ink);
+}
+
+/* Reminders of what this kitchen shares with earlier ones: small pictures, one word each. */
+.guide-also {
+  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+}
+
+.guide-panel-small figure {
+  border-radius: 12px;
+  box-shadow: 0 0 0 2px rgb(36 29 48 / 0.7);
+}
+
+.guide-panel-small p {
+  margin-top: 5px;
+  font-size: 12.5px;
+}
+
+.guide-menu {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.guide-dish {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  min-width: 110px;
+  padding: 10px 12px 8px;
+  border-radius: 12px;
+  font-size: 12.5px;
+  background: #fff;
+  box-shadow: 0 0 0 2px rgb(36 29 48 / 0.1), 0 3px 0 rgb(36 29 48 / 0.08);
+}
+
+.guide-dish.is-new {
+  background: #fff0c2;
+  box-shadow: 0 0 0 2.5px #f2b84b;
+}
+
+.guide-dish b {
+  font-weight: 900;
+}
+
+.guide-new {
+  position: absolute;
+  top: -8px;
+  right: -6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #fff;
+  background: #d2411f;
+}
+
+.guide-foot {
+  display: flex;
+  justify-content: center;
+  padding: 12px 20px 18px;
+}
+
+.guide-foot .button {
+  min-width: 220px;
+  justify-content: center;
+  font-size: 17px;
+}
+
+.guide-foot kbd {
+  background: rgb(0 0 0 / 0.22);
+}
+
+/* Phones have no Enter key to point at. */
+body.touch .guide-foot kbd {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .guide {
+    padding: 10px;
+  }
+
+  .guide-head,
+  .guide-body,
+  .guide-foot {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .guide-head h2 {
+    font-size: 23px;
+  }
+
+  .guide-hero[data-count="2"] .guide-panels,
+  .guide-hero[data-count="4"] .guide-panels {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .guide-hero[data-count="4"] .guide-panel + .guide-panel::before {
+    display: none;
+  }
+
+  .guide-panel p {
+    font-size: 14px;
+  }
+
+  .guide-foot .button {
+    width: 100%;
+  }
+}
+
+/* ---- illustration motion ---- */
+
+.guide-panel svg * {
+  transform-box: view-box;
+}
+
+.ill-grab {
+  animation: ill-grab 1.6s ease-in-out infinite;
+}
+
+.ill-chop {
+  animation: ill-chop 0.5s ease-in infinite alternate;
+}
+
+.ill-burst {
+  animation: ill-burst 1s steps(1) infinite;
+}
+
+.ill-drop {
+  animation: ill-drop 1.6s cubic-bezier(0.5, 0, 0.75, 1) infinite;
+}
+
+.ill-delay-1 {
+  animation-delay: 0.25s;
+}
+
+.ill-delay-2 {
+  animation-delay: 0.5s;
+}
+
+.ill-slide {
+  animation: ill-slide 2s ease-in-out infinite;
+}
+
+.ill-pop {
+  animation: ill-pop 2s ease-out infinite;
+}
+
+.ill-steam {
+  animation: ill-steam 1.6s ease-out infinite;
+}
+
+.ill-pass {
+  animation: ill-pass 2.6s ease-in-out infinite;
+}
+
+.ill-scrub {
+  animation: ill-scrub 0.6s linear infinite;
+}
+
+.ill-clean {
+  animation: ill-clean 2.4s ease-in-out infinite;
+}
+
+.ill-bubble {
+  animation: ill-bubble 1.4s ease-out infinite;
+}
+
+.ill-glow {
+  animation: ill-glow 0.8s ease-in-out infinite alternate;
+}
+
+.ill-roast ellipse {
+  animation: ill-roast-skin 3s ease-in-out infinite;
+}
+
+.ill-roast path:first-of-type {
+  animation: ill-roast-leg 3s ease-in-out infinite;
+}
+
+.ill-flicker {
+  animation: ill-flicker 0.35s ease-in-out infinite alternate;
+}
+
+.ill-shrink {
+  animation: ill-flicker 0.35s ease-in-out infinite alternate, ill-shrink 2.4s ease-in infinite;
+}
+
+.ill-spray {
+  animation: ill-spray 0.4s ease-out infinite;
+}
+
+.ill-roll {
+  animation: ill-roll 0.6s linear infinite;
+}
+
+.ill-ride {
+  animation: ill-ride 3s linear infinite;
+}
+
+@keyframes ill-grab {
+  0% { transform: translate(-50px, 4px); opacity: 0; }
+  20% { opacity: 1; }
+  60%, 100% { transform: none; opacity: 1; }
+}
+
+@keyframes ill-chop {
+  from { transform: rotate(-28deg); }
+  to { transform: rotate(8deg); }
+}
+
+@keyframes ill-burst {
+  0% { opacity: 0; }
+  50% { opacity: 1; }
+}
+
+@keyframes ill-drop {
+  0% { transform: translateY(-34px); opacity: 0; }
+  20% { opacity: 1; }
+  55%, 100% { transform: none; opacity: 1; }
+}
+
+@keyframes ill-slide {
+  0%, 15% { transform: none; }
+  60%, 100% { transform: translateX(80px); }
+}
+
+@keyframes ill-pop {
+  0%, 55% { transform: translateY(14px); opacity: 0; }
+  70% { transform: none; opacity: 1; }
+  100% { transform: translateY(-6px); opacity: 0; }
+}
+
+@keyframes ill-steam {
+  from { transform: translateY(6px); opacity: 0; }
+  40% { opacity: 1; }
+  to { transform: translateY(-10px); opacity: 0; }
+}
+
+@keyframes ill-pass {
+  0%, 10% { transform: none; }
+  40%, 55% { transform: translateX(30px); }
+  85%, 100% { transform: translateX(60px); }
+}
+
+@keyframes ill-scrub {
+  0% { transform: translate(0, 0); }
+  25% { transform: translate(6px, -3px); }
+  50% { transform: translate(0, -5px); }
+  75% { transform: translate(-6px, -3px); }
+  100% { transform: translate(0, 0); }
+}
+
+@keyframes ill-clean {
+  0%, 20% { opacity: 1; }
+  70%, 100% { opacity: 0; }
+}
+
+@keyframes ill-bubble {
+  from { transform: translateY(4px) scale(0.6); opacity: 0; }
+  30% { opacity: 1; }
+  to { transform: translateY(-22px) scale(1.1); opacity: 0; }
+}
+
+@keyframes ill-glow {
+  from { opacity: 0.55; }
+  to { opacity: 1; }
+}
+
+@keyframes ill-roast-skin {
+  0%, 15% { fill: #f3c0ad; }
+  65%, 100% { fill: #c8752e; }
+}
+
+@keyframes ill-roast-leg {
+  0%, 15% { stroke: #f3c0ad; }
+  65%, 100% { stroke: #c8752e; }
+}
+
+@keyframes ill-flicker {
+  from { transform: scale(1, 1); }
+  to { transform: scale(0.92, 1.12); }
+}
+
+@keyframes ill-shrink {
+  0%, 30% { scale: 1; }
+  90%, 100% { scale: 0.35; }
+}
+
+@keyframes ill-spray {
+  from { transform: translateX(-8px); opacity: 0.5; }
+  to { transform: translateX(6px); opacity: 1; }
+}
+
+@keyframes ill-roll {
+  to { transform: translateX(20px); }
+}
+
+@keyframes ill-ride {
+  0% { transform: none; }
+  100% { transform: translateX(112px); }
+}
+
+@keyframes guide-fade {
+  from { opacity: 0; }
+}
+
+@keyframes guide-pop {
+  from { transform: scale(0.92) translateY(10px); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .guide,
+  .guide-card,
+  .guide-panel svg * {
+    animation: none !important;
+  }
+}
+
+/* ---- full screen ---- */
+
+.pill-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  padding: 6px;
+}
+
+.pill-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.fs-card {
+  width: min(560px, 100%);
+}
+
+.fs-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 22px;
+  margin: 0;
+  padding: 12px 20px 4px;
+  list-style: none;
+  counter-reset: step;
+}
+
+.fs-steps li {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  text-align: center;
+  font-size: 14.5px;
+  line-height: 1.25;
+  counter-increment: step;
+}
+
+.fs-steps li::before {
+  content: counter(step);
+  position: absolute;
+  top: -6px;
+  left: calc(50% - 46px);
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  font-size: 13px;
+  font-weight: 900;
+  color: #fff;
+  background: #d2411f;
+}
+
+.fs-steps li + li::after {
+  content: "→";
+  position: absolute;
+  top: 26px;
+  left: -18px;
+  font-size: 18px;
+  font-weight: 900;
+  color: #d2411f;
+}
+
+.fs-icon {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 0 0 2.5px var(--ink), 0 4px 0 2px rgb(36 29 48 / 0.85);
+}
+
+.fs-icon svg {
+  width: 40px;
+  height: 40px;
+}
+
+.fs-icon img {
+  width: 100%;
+  height: 100%;
+  border-radius: 18px;
+}
+
+.fs-note {
+  margin: 14px 20px 0;
+  text-align: center;
+  font-size: 13.5px;
+  font-weight: 700;
+  opacity: 0.7;
+}
+
+/* Run edge to edge on notched phones, keeping controls and readouts clear of the notch and the home bar. */
+.hud {
+  top: max(16px, env(safe-area-inset-top));
+  left: max(16px, env(safe-area-inset-left));
+  right: max(16px, env(safe-area-inset-right));
+}
+
+.stat-score {
+  left: max(16px, env(safe-area-inset-left));
+}
+
+.stat-timer {
+  right: max(16px, env(safe-area-inset-right));
+}
+
+.stick-zone {
+  left: env(safe-area-inset-left);
+}
+
+.touch-buttons {
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(16px, env(safe-area-inset-bottom));
+}
+
+body.touch .stat {
+  top: calc(52px + env(safe-area-inset-top));
+}
+
+@media (max-width: 640px) {
+  .hud {
+    top: max(10px, env(safe-area-inset-top));
+    left: max(10px, env(safe-area-inset-left));
+    right: max(10px, env(safe-area-inset-right));
+  }
+}
+
+.lobby {
+  padding-top: calc(56px + env(safe-area-inset-top));
 }

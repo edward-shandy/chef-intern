@@ -1,5 +1,5 @@
-import { burns, holdsItems, isFixture, LEVELS, tileAt, type Level } from "./level";
-import { isSoup, RECIPES, SOUP_OF, type DishPart, type Ingredient, type RecipeId } from "./recipes";
+import { beltNext, burns, holdsItems, isFixture, LEVELS, tileAt, type Level } from "./level";
+import { isSoup, RECIPES, ROAST_OF, SOUP_OF, type DishPart, type Ingredient, type RecipeId } from "./recipes";
 
 export { RECIPES, type DishPart, type Ingredient, type RecipeId };
 
@@ -23,10 +23,17 @@ const REACH = 0.75;
 const AIM_RANGE = 0.8;
 const CHOP_SECONDS = 1.2;
 const COOK_SECONDS = 8;
+// How long a whole chicken takes on the grill; it then burns on the same clock as a pot.
+const ROAST_SECONDS = 10;
+// How long a conveyor belt takes to carry its load one tile along.
+export const BELT_SECONDS = 0.6;
 export const ROUND_SECONDS = 900;
 const EXPIRED_PENALTY = 10;
 const MAX_TIP = 10;
 const RESTART_DELAY = 3;
+// Longest the briefing holds the clock before a round starts anyway, so one idle chef cannot stall the crew.
+export const READY_SECONDS = 45;
+export const COUNTDOWN_SECONDS = 3;
 const WASH_SECONDS = 2;
 // How long a served plate stays with the customer before it comes back dirty.
 const RETURN_SECONDS = 6;
@@ -46,8 +53,8 @@ const MAX_ORDERS = [2, 3, 4, 4];
 export const TARGET_SCALE = [1, 1.8, 2.6, 3.3];
 
 export type Item =
-  // chop runs 0..1; an ingredient counts as chopped at 1.
-  | { type: "ingredient"; kind: Ingredient; chop: number }
+  // chop runs 0..1; an ingredient counts as chopped at 1. Grilled ingredients use cook instead, on the pot's scale.
+  | { type: "ingredient"; kind: Ingredient; chop: number; cook?: number }
   | { type: "plate"; contents: DishPart[] }
   // A pot holds up to POT_CAPACITY chopped pieces of one kind of ingredient.
   | { type: "pot"; kind: Ingredient | null; contents: number; cook: number }
@@ -78,6 +85,8 @@ export interface PlayerState {
   held: Item | null;
   // True while this chef is actively chopping, so clients can animate it.
   chopping: boolean;
+  // True while this chef is scrubbing plates at the wash sink.
+  washing: boolean;
   // True while this chef is spraying the extinguisher.
   spraying: boolean;
   // Seconds of dash left, and seconds until the next dash is allowed.
@@ -102,6 +111,9 @@ export interface GameState {
   fires: Record<number, number>;
   // Seconds until the fire next jumps to a neighbouring worktop.
   spreadIn: number;
+  // Seconds until every conveyor belt moves its load one tile, and how many times they have moved so far.
+  beltIn: number;
+  beltSteps: number;
   orders: Order[];
   score: number;
   // Score needed to clear this kitchen: what has been asked of the crews so far plus what the current crew owes for the time left.
@@ -112,8 +124,13 @@ export interface GameState {
   won: boolean;
   delivered: number;
   timeLeft: number;
-  // "waiting" is the warm-up before the first round: chefs can move and practise, but no orders or clock.
-  phase: "waiting" | "playing" | "over";
+  // "waiting" is the lobby warm-up: chefs can move and practise, but no orders or clock. "ready" is the kitchen briefing
+  // just before a round: the kitchen is on screen but the clock waits until every chef has read it (or READY_SECONDS pass).
+  phase: "waiting" | "ready" | "playing" | "over";
+  // Chefs who have closed the briefing, how long it has been up, and the 3-2-1 before the clock starts, once it has begun.
+  ready: number[];
+  readyFor: number;
+  countdown: number | null;
   overFor: number;
   nextOrderIn: number;
   nextOrderId: number;
@@ -137,6 +154,16 @@ export const IDLE_INPUT: PlayerInput = { moveX: 0, moveZ: 0, use: false, aim: nu
 
 export const isChopped = (item: Item): boolean => item.type === "ingredient" && item.chop >= 1;
 export const potIsCooked = (cook: number): boolean => cook >= 1 && cook < BURN_AT;
+// True for ingredients that are grilled whole rather than chopped.
+export const isRoastable = (kind: Ingredient): boolean => ROAST_OF[kind] !== undefined;
+
+// What an ingredient adds to a plate once it is ready: chopped veg, or a chicken roasted but not burnt.
+export function dishPart(item: Item): DishPart | null {
+  if (item.type !== "ingredient") return null;
+  const roast = ROAST_OF[item.kind];
+  if (roast) return potIsCooked(item.cook ?? 0) ? roast : null;
+  return item.chop >= 1 ? (item.kind as DishPart) : null;
+}
 
 // Every stove starts each round with an empty pot on it.
 function startingItems(level: Level): Record<number, Item> {
@@ -148,7 +175,7 @@ function startingItems(level: Level): Record<number, Item> {
   return items;
 }
 
-export function createGame(level: number, seed: number, waiting = false): GameState {
+export function createGame(level: number, seed: number, waiting = false, phase: GameState["phase"] = waiting ? "waiting" : "playing"): GameState {
   return {
     level,
     players: [],
@@ -159,6 +186,8 @@ export function createGame(level: number, seed: number, waiting = false): GameSt
     wash: { dirty: 0, clean: 0, progress: 0 },
     fires: {},
     spreadIn: SPREAD_SECONDS[0],
+    beltIn: BELT_SECONDS,
+    beltSteps: 0,
     orders: [],
     score: 0,
     target: LEVELS[level].target,
@@ -166,7 +195,10 @@ export function createGame(level: number, seed: number, waiting = false): GameSt
     won: false,
     delivered: 0,
     timeLeft: ROUND_SECONDS,
-    phase: waiting ? "waiting" : "playing",
+    phase,
+    ready: [],
+    readyFor: 0,
+    countdown: null,
     overFor: 0,
     nextOrderIn: 2,
     nextOrderId: 1,
@@ -197,6 +229,7 @@ export function addPlayer(state: GameState, id: number, name = ""): void {
     facing: 0,
     held: null,
     chopping: false,
+    washing: false,
     spraying: false,
     dashTime: 0,
     dashCooldown: 0,
@@ -268,10 +301,12 @@ function pour(pot: Pot, plate: Plate): boolean {
 // Tries to merge the held item with the resting one and reports which of them was used up.
 function combine(held: Item, resting: Item): "held" | "resting" | "both-stay" | null {
   if (held.type === "ingredient") {
-    if (resting.type === "plate" && isChopped(held) && addToPlate(resting, held.kind)) return "held";
+    const part = dishPart(held);
+    if (resting.type === "plate" && part && addToPlate(resting, part)) return "held";
     if (resting.type === "pot" && addToPot(resting, held)) return "held";
   } else if (held.type === "plate") {
-    if (resting.type === "ingredient" && isChopped(resting) && addToPlate(held, resting.kind)) return "resting";
+    const part = dishPart(resting);
+    if (resting.type === "ingredient" && part && addToPlate(held, part)) return "resting";
     if (resting.type === "pot" && pour(resting, held)) return "both-stay";
   } else if (held.type === "pot") {
     if (resting.type === "ingredient" && addToPot(held, resting)) return "resting";
@@ -317,7 +352,9 @@ function interact(level: Level, state: GameState, player: PlayerState, aim: numb
       player.held = resting;
       delete state.tileItems[index];
     } else if (tile.kind === "crate" && tile.dispenses) {
-      player.held = { type: "ingredient", kind: tile.dispenses, chop: 0 };
+      player.held = isRoastable(tile.dispenses)
+        ? { type: "ingredient", kind: tile.dispenses, chop: 0, cook: 0 }
+        : { type: "ingredient", kind: tile.dispenses, chop: 0 };
     } else if (tile.kind === "plates") {
       if (takePlate(state)) player.held = { type: "plate", contents: [] };
     } else if (tile.kind === "return" && state.dirty > 0) {
@@ -342,9 +379,10 @@ function interact(level: Level, state: GameState, player: PlayerState, aim: numb
       if (state.plates !== null) state.returning.push(RETURN_SECONDS);
     }
   } else if (tile.kind === "plates") {
-    // Chopped food can go straight onto a fresh plate from the stack.
-    if (held.type === "ingredient" && isChopped(held)) {
-      if (takePlate(state)) player.held = { type: "plate", contents: [held.kind] };
+    // Chopped or roasted food can go straight onto a fresh plate from the stack.
+    const part = dishPart(held);
+    if (part) {
+      if (takePlate(state)) player.held = { type: "plate", contents: [part] };
     } else if (held.type === "plate" && held.contents.length === 0 && state.plates !== null) {
       // A clean plate nobody needs yet goes back on the stack.
       state.plates += 1;
@@ -424,7 +462,7 @@ function chop(level: Level, state: GameState, player: PlayerState, aim: number |
     // Holding the same button at the sink scrubs one waiting plate at a time.
     if (state.wash.dirty === 0) return;
     if (index === aim) faceTile(level, player, index);
-    player.chopping = true;
+    player.washing = true;
     state.wash.progress += dt / WASH_SECONDS;
     if (state.wash.progress >= 1) {
       state.wash.progress = 0;
@@ -436,7 +474,8 @@ function chop(level: Level, state: GameState, player: PlayerState, aim: number |
   if (level.tiles[index].kind !== "board") return;
   if (index === aim) faceTile(level, player, index);
   const item = state.tileItems[index];
-  if (item?.type === "ingredient" && item.chop < 1) {
+  // A whole chicken goes on the grill as it is; the knife does nothing to it.
+  if (item?.type === "ingredient" && item.chop < 1 && !isRoastable(item.kind)) {
     item.chop = Math.min(1, item.chop + dt / CHOP_SECONDS);
     player.chopping = true;
   }
@@ -444,13 +483,55 @@ function chop(level: Level, state: GameState, player: PlayerState, aim: number |
 
 function cookPots(level: Level, state: GameState, dt: number): void {
   for (const [key, item] of Object.entries(state.tileItems)) {
-    if (item.type !== "pot" || item.contents < POT_CAPACITY) continue;
     const index = Number(key);
+    if (item.type === "ingredient" && isRoastable(item.kind)) {
+      if (level.tiles[index].kind !== "grill" || state.fires[index] !== undefined) continue;
+      item.cook = Math.min(level.fire ? FIRE_AT : BURN_AT, (item.cook ?? 0) + dt / ROAST_SECONDS);
+      // A charred chicken left over the coals goes up in flames like a forgotten pot.
+      if (level.fire && item.cook >= FIRE_AT) ignite(state, index);
+      continue;
+    }
+    if (item.type !== "pot" || item.contents < POT_CAPACITY) continue;
     if (level.tiles[index].kind !== "stove" || state.fires[index] !== undefined) continue;
     item.cook = Math.min(level.fire ? FIRE_AT : BURN_AT, item.cook + dt / COOK_SECONDS);
     // The pot drops back to merely burnt, so it flares up again unless somebody takes it off the hob.
     if (level.fire && item.cook >= FIRE_AT) ignite(state, index);
   }
+}
+
+// Which items the belts carry on at their next step, as [from, to] tile pairs. An item moves when the queue ahead
+// of it reaches an empty tile, or when it is part of a loop with no gap, which turns as a whole. Belts never merge.
+export function beltMoves(level: Level, items: Record<number, Item>): Array<[number, number]> {
+  const moves: Array<[number, number]> = [];
+  for (const key of Object.keys(items)) {
+    const from = Number(key);
+    const to = beltNext(level, from);
+    if (to === null) continue;
+    let cursor: number | null = to;
+    let free = false;
+    for (let guard = 0; cursor !== null && guard < level.tiles.length; guard++) {
+      if (!items[cursor] || cursor === from) {
+        free = true;
+        break;
+      }
+      cursor = beltNext(level, cursor);
+    }
+    if (free) moves.push([from, to]);
+  }
+  return moves;
+}
+
+// Every belt moves its load one tile along at the same moment.
+function runBelts(level: Level, state: GameState, dt: number): void {
+  state.beltIn -= dt;
+  if (state.beltIn > 0) return;
+  state.beltIn += BELT_SECONDS;
+  const moves = beltMoves(level, state.tileItems);
+  if (moves.length === 0) return;
+  const carried = moves.map(([from, to]) => [to, state.tileItems[from]] as const);
+  for (const [from] of moves) delete state.tileItems[from];
+  for (const [to, item] of carried) state.tileItems[to] = item;
+  state.beltSteps += 1;
 }
 
 function updateOrders(level: Level, state: GameState, dt: number): void {
@@ -493,14 +574,33 @@ export function renamePlayer(state: GameState, id: number, name: unknown): void 
 
 // Ends the warm-up; anyone in the room may call it once everybody has arrived.
 export function startRound(state: GameState): void {
-  if (state.phase === "waiting") state.phase = "playing";
+  if (state.phase !== "waiting") return;
+  state.phase = "ready";
+  state.ready = [];
+  state.readyFor = 0;
+  state.countdown = null;
 }
 
-// Starts a fresh round: the next kitchen after a win, the same one again after a loss.
+// A chef has read the briefing; the round begins once the whole crew has.
+export function markReady(state: GameState, id: number): void {
+  if (state.phase !== "ready" || state.ready.includes(id)) return;
+  state.ready.push(id);
+  beginWhenReady(state);
+}
+
+// Once the whole crew is ready, or the wait has run out, a short count-down starts the clock.
+function beginWhenReady(state: GameState): void {
+  if (state.countdown !== null) return;
+  const everyone = state.players.length > 0 && state.players.every((player) => state.ready.includes(player.id));
+  if (everyone || state.readyFor >= READY_SECONDS) state.countdown = COUNTDOWN_SECONDS;
+}
+
+// Starts a fresh round: the same kitchen again straight away after a loss, or after a win the next kitchen,
+// held on its briefing until the crew has read it.
 function restartRound(state: GameState): void {
   const players = state.players;
   const level = state.won ? (state.level + 1) % LEVELS.length : state.level;
-  Object.assign(state, createGame(level, state.seed));
+  Object.assign(state, createGame(level, state.seed, false, state.won ? "ready" : "playing"));
   for (const { id, name } of players) addPlayer(state, id, name);
 }
 
@@ -617,19 +717,33 @@ export function stepGame(state: GameState, inputs: Record<number, PlayerInput>, 
   for (const player of state.players) {
     resolveCollisions(level, player);
     const input = inputs[player.id] ?? IDLE_INPUT;
-    player.chopping = player.spraying = false;
+    player.chopping = player.washing = player.spraying = false;
     if (input.interact) interact(level, state, player, input.aim);
     if (input.use && player.held?.type === "extinguisher") spray(level, state, player, input.aim, dt);
     else if (input.use) chop(level, state, player, input.aim, dt);
   }
 
   cookPots(level, state, dt);
+  runBelts(level, state, dt);
   spreadFire(level, state, dt);
   // Plates that were served come back dirty once the customer has finished.
   state.returning = state.returning.map((seconds) => seconds - dt);
   state.dirty += state.returning.filter((seconds) => seconds <= 0).length;
   state.returning = state.returning.filter((seconds) => seconds > 0);
   if (state.phase === "waiting") return;
+  if (state.phase === "ready") {
+    state.readyFor += dt;
+    // Also catches the last unready chef leaving the room.
+    beginWhenReady(state);
+    if (state.countdown !== null) {
+      state.countdown -= dt;
+      if (state.countdown <= 0) {
+        state.countdown = null;
+        state.phase = "playing";
+      }
+    }
+    return;
+  }
   updateOrders(level, state, dt);
 
   state.timeLeft -= dt;
@@ -640,7 +754,7 @@ export function stepGame(state: GameState, inputs: Record<number, PlayerInput>, 
     state.won = state.score >= state.target;
     for (const player of state.players) {
       player.vx = player.vz = player.dashTime = 0;
-      player.chopping = player.spraying = false;
+      player.chopping = player.washing = player.spraying = false;
     }
   }
 }

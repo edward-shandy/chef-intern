@@ -21,6 +21,8 @@ export type ClientMessage =
   | { type: "input"; seq: number; moveX: number; moveZ: number; use: boolean; aim: number | null; dash: boolean }
   | { type: "interact"; aim: number | null }
   | { type: "start" }
+  // This chef has closed the kitchen briefing and is ready for the clock to start.
+  | { type: "ready" }
   // Picks the kitchen while the room is still in its lobby; `level` is an index into LEVELS.
   | { type: "level"; level: number }
   // What this chef wants to be called; the server trims it.

@@ -2,8 +2,16 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Chef Intern</title>
+    <!-- Added to a phone's Home Screen, the game opens as a full-screen app with no browser bars. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Chef Intern" />
+    <meta name="theme-color" content="#1f1929" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;900&display=swap" rel="stylesheet" />
@@ -14,6 +22,8 @@
     <header class="hud">
       <h1>Chef Intern</h1>
       <div class="hud-right">
+        <button id="fullscreen" class="pill-button pill-icon" type="button" aria-label="Full screen" hidden></button>
+        <button id="guide-button" class="pill-button" type="button" hidden>Guide</button>
         <button id="leave" class="pill-button" type="button">Leave</button>
         <button id="music" class="pill-button" type="button">Music on</button>
         <button id="mute" class="pill-button" type="button">Sound on</button>
@@ -28,6 +38,7 @@
         <div class="goal" id="goal"><i></i></div>
       </div>
       <div class="stat stat-timer"><small>Time left</small><b id="timer">15:00</b></div>
+      <p id="ready-banner" class="ready-banner" role="status" hidden></p>
       <p id="fire-alert" class="fire-alert" role="alert" hidden>Fire! Grab the extinguisher and hold <kbd>F</kbd></p>
     </div>
     <section id="waiting" class="lobby" hidden>
@@ -70,6 +81,39 @@
         <p id="final-orders" class="gameover-orders"></p>
         <p class="gameover-hint">Press <kbd>E</kbd> or click to <span id="result-next"></span></p>
       </div>
+    </section>
+    <p id="countdown" class="countdown" aria-live="assertive" hidden></p>
+    <section id="fullscreen-tip" class="guide fs-tip" role="dialog" aria-modal="true" aria-labelledby="fs-title" hidden>
+      <div class="guide-card fs-card">
+        <header class="guide-head">
+          <div>
+            <p class="lobby-kicker">On iPhone</p>
+            <h2 id="fs-title">Play full screen</h2>
+          </div>
+          <button type="button" class="guide-close" data-close aria-label="Close">×</button>
+        </header>
+        <ol class="fs-steps">
+          <li>
+            <span class="fs-icon"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 4v16M10 10l6-6 6 6" fill="none" stroke="#3d8fe4" stroke-width="2.800" stroke-linecap="round" stroke-linejoin="round"/><path d="M11 14H8v14h16V14h-3" fill="none" stroke="#3d8fe4" stroke-width="2.800" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            <b>Tap Share</b>
+          </li>
+          <li>
+            <span class="fs-icon"><svg viewBox="0 0 32 32" aria-hidden="true"><rect x="5" y="5" width="22" height="22" rx="6" fill="none" stroke="#241d30" stroke-width="2.800"/><path d="M16 11v10M11 16h10" stroke="#241d30" stroke-width="2.800" stroke-linecap="round"/></svg></span>
+            <b>Add to Home Screen</b>
+          </li>
+          <li>
+            <span class="fs-icon"><img src="/apple-touch-icon.png" alt="" /></span>
+            <b>Open it from your Home Screen</b>
+          </li>
+        </ol>
+        <p class="fs-note">It opens like an app: no address bar, no tabs.</p>
+        <footer class="guide-foot">
+          <button type="button" class="button button-primary" data-close>Got it</button>
+        </footer>
+      </div>
+    </section>
+    <section id="guide" class="guide" role="dialog" aria-modal="true" aria-labelledby="guide-title" hidden>
+      <div class="guide-card"></div>
     </section>
     <p class="hint">
       <kbd>WASD</kbd> move <span>·</span> <kbd>Shift</kbd> dash <span>·</span> <kbd>E</kbd> or <kbd>click</kbd> use

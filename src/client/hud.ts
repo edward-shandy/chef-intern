@@ -1,26 +1,31 @@
 import { LEVELS, type Level, type Tile } from "../shared/level";
 import { RECIPES, ROUND_SECONDS, TARGET_SCALE, type GameState, type RecipeId } from "../shared/sim";
 
-type IconName = "lettuce" | "tomato" | "onion" | "soup" | "arrow";
+export type IconName = "lettuce" | "tomato" | "onion" | "soup" | "arrow" | "chicken" | "grill" | "roast";
 
-const ICONS: Record<IconName, string> = {
+export const ICONS: Record<IconName, string> = {
   lettuce: `<svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="12" fill="#7ccf4f"/><path d="M16 7v18M9.5 12c2.2 2 4.3 3 6.5 3m6.500-3c-2.200 2-4.300 3-6.500 3M9 20c2.600.9 4.800.9 7 0m7 0c-2.600.9-4.800.9-7 0" fill="none" stroke="#4c9a2f" stroke-width="2" stroke-linecap="round"/></svg>`,
   tomato: `<svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="18" r="11" fill="#e23b2e"/><path d="M16 9l-5-3 2 5-5 1 5 2 3-3 3 3 5-2-5-1 2-5z" fill="#3f9b46"/></svg>`,
   onion: `<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 6c2 5 10 8 10 15a10 9 0 0 1-20 0c0-7 8-10 10-15z" fill="#c98bd0"/><path d="M16 9c-1 5-5 8-5 13m5-13c1 5 5 8 5 13m-5-13v15" fill="none" stroke="#8a4f96" stroke-width="1.8" stroke-linecap="round"/><path d="M16 6c-1-2 0-3 1-4" fill="none" stroke="#6f9a3f" stroke-width="2" stroke-linecap="round"/></svg>`,
   soup: `<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M3 15h26a13 12 0 0 1-26 0z" fill="#fffaf0" stroke="#3d8fe4" stroke-width="2.5" stroke-linejoin="round"/><ellipse cx="16" cy="15" rx="11" ry="3" fill="#d2411f"/><path d="M11 9c-1.500-2 1.500-3 0-5m5 5c-1.500-2 1.500-3 0-5m5 5c-1.500-2 1.500-3 0-5" fill="none" stroke="#b9c3d6" stroke-width="2" stroke-linecap="round"/></svg>`,
+  chicken: `<svg viewBox="0 0 32 32" aria-hidden="true"><ellipse cx="15" cy="18" rx="11" ry="8.500" fill="#f6c2b0"/><path d="M8 13c2-4 12-5 15 0" fill="none" stroke="#e29a86" stroke-width="2" stroke-linecap="round"/><path d="M24 22l4 3m-3-6 5 0" stroke="#f6c2b0" stroke-width="3.500" stroke-linecap="round"/><circle cx="28.500" cy="25.500" r="1.800" fill="#fff8ea"/><circle cx="30" cy="19" r="1.800" fill="#fff8ea"/></svg>`,
+  grill: `<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 14h22l-3 9H8z" fill="#3a3d47"/><path d="M8 14l2-3m4 3l1-3m4 3l1-3m4 3l2-3" stroke="#ff7a2a" stroke-width="2.200" stroke-linecap="round"/><path d="M5 14h22" stroke="#8a93a6" stroke-width="2" stroke-linecap="round"/><path d="M10 23l-2 5m14-5 2 5" stroke="#3a3d47" stroke-width="2" stroke-linecap="round"/></svg>`,
+  roast: `<svg viewBox="0 0 32 32" aria-hidden="true"><ellipse cx="16" cy="25" rx="13" ry="3.500" fill="#fffaf0" stroke="#3d8fe4" stroke-width="2"/><ellipse cx="15" cy="17" rx="10" ry="7.500" fill="#c8752e"/><path d="M8 14c3-3 10-3 13 0" fill="none" stroke="#e8a35a" stroke-width="2.200" stroke-linecap="round"/><path d="M23 19l4 2" stroke="#c8752e" stroke-width="3.500" stroke-linecap="round"/><circle cx="28" cy="21.500" r="1.800" fill="#fff8ea"/></svg>`,
   arrow: `<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 16h16m-6-6 6 6-6 6" fill="none" stroke="#8a8198" stroke-width="3.500" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
 };
 
 // What each ticket shows: the ingredients to fetch, and for soup what they turn into.
-const RECIPE_ICONS: Record<RecipeId, IconName[]> = {
+export const RECIPE_ICONS: Record<RecipeId, IconName[]> = {
   lettuce_salad: ["lettuce"],
   salad: ["lettuce", "tomato"],
   soup: ["tomato", "tomato", "tomato", "arrow", "soup"],
   onion_soup: ["onion", "onion", "onion", "arrow", "soup"],
+  roast_chicken: ["chicken", "grill", "arrow", "roast"],
+  chicken_salad: ["roast", "lettuce", "tomato"],
 };
 
 // The four seats, in the order players fill them: each has its own character and ring colour.
-const SEATS = [
+export const SEATS = [
   { name: "Knight", colour: "#e4573d" },
   { name: "Barbarian", colour: "#3d8fe4" },
   { name: "Mage", colour: "#4fb86a" },
@@ -43,11 +48,13 @@ const PLAN_COLOURS: Record<Tile["kind"], string> = {
   sink: "#b9c3d6",
   fridge: "#b9c3d6",
   plant: "#4f9d4a",
+  grill: "#c9552a",
+  belt: "#25212b",
 };
-const CRATE_COLOURS = { tomato: "#e23b2e", lettuce: "#7ccf4f", onion: "#c98bd0" };
+const CRATE_COLOURS = { tomato: "#e23b2e", lettuce: "#7ccf4f", onion: "#c98bd0", chicken: "#f6c2b0" };
 
 // Draws a kitchen's tiles as a small top-down plan.
-function floorPlan(level: Level): string {
+export function floorPlan(level: Level): string {
   const tiles = level.tiles.map((tile, index) => {
     const x = index % level.width;
     const y = Math.floor(index / level.width);
@@ -58,11 +65,15 @@ function floorPlan(level: Level): string {
   return `<svg viewBox="0 0 ${level.width} ${level.height}" aria-hidden="true"><rect width="${level.width}" height="${level.height}" fill="#f4ecdc"/>${tiles.join("")}</svg>`;
 }
 
+const TAG_STYLES: Record<string, string> = { Fire: "fire", "Dish washing": "wash", Grill: "grill", Conveyor: "belt" };
+
 // What sets a kitchen apart, as short tags.
 function levelTags(level: Level): string[] {
   const tags = [`${level.recipes.length} recipes`];
   if (level.plates) tags.push("Dish washing");
   if (level.fire) tags.push("Fire");
+  if (level.tiles.some((tile) => tile.kind === "grill")) tags.push("Grill");
+  if (level.tiles.some((tile) => tile.kind === "belt")) tags.push("Conveyor");
   return tags;
 }
 
@@ -96,7 +107,7 @@ export function createHud(onLevel: (level: number) => void): {
     button.type = "button";
     button.className = "level-card";
     const dots = Array.from({ length: 5 }, (_, i) => `<i${i < level.difficulty ? ' class="on"' : ""}></i>`).join("");
-    const tags = levelTags(level).map((tag) => `<span class="level-tag level-tag-${tag === "Fire" ? "fire" : tag === "Dish washing" ? "wash" : "plain"}">${tag}</span>`);
+    const tags = levelTags(level).map((tag) => `<span class="level-tag level-tag-${TAG_STYLES[tag] ?? "plain"}">${tag}</span>`);
     button.innerHTML = `<span class="level-plan">${floorPlan(level)}<b class="level-number">${index + 1}</b></span><span class="level-name">${level.name}</span><span class="level-dots" aria-label="Difficulty ${level.difficulty} of 5">${dots}</span><span class="level-tags">${tags.join("")}</span><span class="level-goal"><b data-target></b> pts in ${minutes} min</span>`;
     button.addEventListener("click", () => onLevel(index));
     return button;

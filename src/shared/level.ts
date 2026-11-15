@@ -12,6 +12,10 @@ export type TileKind =
   // Dish washing: served plates come back dirty at the return hatch and are cleaned at the wash sink.
   | "return"
   | "wash"
+  // Charcoal grill: a whole chicken left on it roasts, then burns.
+  | "grill"
+  // Conveyor belt: whatever rests on it is carried one tile along every BELT_SECONDS.
+  | "belt"
   // Wall bracket where the fire extinguisher starts each round, and the only station that can hold it besides a counter.
   | "extinguisher"
   // Fixtures that fill a cabinet slot but cannot be used: a sink, a fridge, or a counter with a pot plant on it.
@@ -48,6 +52,8 @@ export interface RoomDecor {
   halfWall?: string;
   // Puts the restaurant on a town block: shops and a road behind it, a park, a parking lot and a front terrace.
   street?: { side: "back"; season?: "spring" | "summer" | "autumn" | "winter" };
+  // Evening service: the lights go down and the lanterns among the props glow.
+  night?: boolean;
   // Any other props, placed as they are.
   extras?: Array<{ model: string; x: number; z: number; turn?: number; scale?: number }>;
 }
@@ -55,6 +61,8 @@ export interface RoomDecor {
 export interface Tile {
   kind: TileKind;
   dispenses?: Ingredient;
+  // Which way a belt carries its load, in tiles.
+  dir?: [dx: number, dz: number];
 }
 
 export interface Level {
@@ -91,6 +99,12 @@ const LEGEND: Record<string, Tile> = {
   T: { kind: "crate", dispenses: "tomato" },
   L: { kind: "crate", dispenses: "lettuce" },
   N: { kind: "crate", dispenses: "onion" },
+  C: { kind: "crate", dispenses: "chicken" },
+  G: { kind: "grill" },
+  "^": { kind: "belt", dir: [0, -1] },
+  v: { kind: "belt", dir: [0, 1] },
+  "<": { kind: "belt", dir: [-1, 0] },
+  ">": { kind: "belt", dir: [1, 0] },
   X: { kind: "trash" },
   B: { kind: "board" },
   O: { kind: "stove" },
@@ -137,10 +151,19 @@ export const isFixture = (tile: Tile): boolean => tile.kind === "sink" || tile.k
 
 // Only these tiles can have an item resting on them.
 export const holdsItems = (tile: Tile): boolean =>
-  tile.kind === "counter" || tile.kind === "board" || tile.kind === "stove";
+  tile.kind === "counter" || tile.kind === "board" || tile.kind === "stove" || tile.kind === "grill" || tile.kind === "belt";
 
-// Fire only takes hold of worktops; crates, sinks and the serving window never burn.
-export const burns = holdsItems;
+// Fire only takes hold of worktops; crates, sinks, belts and the serving window never burn.
+export const burns = (tile: Tile): boolean => holdsItems(tile) && tile.kind !== "belt";
+
+// The tile a belt hands its load on to, or null when the belt ends there.
+export function beltNext(level: Level, index: number): number | null {
+  const tile = level.tiles[index];
+  if (tile?.kind !== "belt" || !tile.dir) return null;
+  const tx = (index % level.width) + tile.dir[0];
+  const tz = Math.floor(index / level.width) + tile.dir[1];
+  return tileAt(level, tx, tz)?.kind === "belt" ? tz * level.width + tx : null;
+}
 
 // Clearing one kitchen unlocks the next; they must all share one size, which the camera is framed for.
 export const LEVELS: Level[] = [
@@ -301,11 +324,11 @@ export const LEVELS: Level[] = [
     ],
     { plates: 4, difficulty: 3 },
   ),
-  // One long island of hobs between the pantry and the pass: soups everywhere, and a forgotten pot starts a fire.
+  // One long island of hobs between the pantry and the pass: soups everywhere, a chicken grill, and a forgotten pot starts a fire.
   parseLevel(
     "Hot Line",
     380,
-    ["soup", "onion_soup", "salad"],
+    ["soup", "onion_soup", "salad", "roast_chicken"],
     {
       sink: "sink_wood_double",
       fridge: "fridge_cream",
@@ -341,10 +364,10 @@ export const LEVELS: Level[] = [
       },
     },
     [
-      "V#T#L#N####EV",
+      "V#T#L#N#C##EV",
       "#S.........S#",
       "#...........#",
-      "#.#OO#O#BB#.#",
+      "#.#OO#OGBB#.#",
       "#...........#",
       "#...........#",
       "#S.........SW",
@@ -357,7 +380,7 @@ export const LEVELS: Level[] = [
   parseLevel(
     "Full House",
     420,
-    ["lettuce_salad", "salad", "soup", "onion_soup"],
+    ["salad", "soup", "onion_soup", "roast_chicken", "chicken_salad"],
     {
       sink: "sink_industrial",
       fridge: "fridge_retro",
@@ -392,11 +415,11 @@ export const LEVELS: Level[] = [
       },
     },
     [
-      "VTLN###OOO#PV",
+      "VTLNC##OOO#PV",
       "#S....#....S#",
       "#...........X",
       "#.....#.....#",
-      "###.#####.###",
+      "###.#G###.###",
       "#.....#.....W",
       "E.....Q.....W",
       "#S....#....S#",
@@ -404,54 +427,64 @@ export const LEVELS: Level[] = [
     ],
     { plates: 5, fire: true, difficulty: 5 },
   ),
-  // Everything sits on one lap round a planted island: hobs on its far side, boards and sink on the near side, and the pass in a one-tile alley.
+  // A night market: two stalls split by a loop of conveyor belt. Veg and the pass sit on the left, hobs, grills and the
+  // wash-up on the right; dishes ride the belt across or are walked the long way round by the lane at the back.
   parseLevel(
-    "Round Trip",
+    "Night Market",
     400,
-    ["lettuce_salad", "salad", "soup", "onion_soup"],
+    ["salad", "soup", "onion_soup", "roast_chicken", "chicken_salad"],
     {
-      sink: "sink_farmhouse",
-      fridge: "fridge_pro",
-      plants: ["plant_lime", "plant_blossom", "plant_succulent", "plant_pink", "plant_bamboo", "plant_tropical"],
+      sink: "sink_wood_double",
+      fridge: "fridge_double",
+      plants: ["plant_bamboo", "plant_tropical", "plant_lime"],
       room: {
-        backWall: Array.from({ length: 7 }, (_, i) => (i % 3 === 1 ? "wall_window" : "wall_teal_backsplash")),
+        backWall: Array.from({ length: 7 }, (_, i) => (i % 2 ? "wall_window" : "wall_brick")),
         outerWall: "wall_brick",
         sideWalls: ["wall_brick", "wall_window"],
         margin: 6,
-        street: { side: "back", season: "autumn" },
-        floor: "/textures/customer-floor.svg",
-        halfWall: "kitchen-halfwall-brick",
+        night: true,
+        street: { side: "back", season: "summer" },
+        floor: "/textures/market-floor.svg",
         tables: [
-          { model: "dining_round", x: -3.6, z: 1.6, guests: ["guest_coral", "guest_mint"] },
-          { model: "dining-set-gingham", x: -3.6, z: 4.5, guests: ["guest_blue", "", "guest_mustard", "guest_coral"] },
-          { model: "dining_booth", x: -3.6, z: 7.4, guests: ["guest_mint", ""] },
-          { model: "dining_booth", x: 16.6, z: 1.6, guests: ["", "guest_blue"] },
-          { model: "dining-set-gingham", x: 16.6, z: 4.5, guests: ["guest_mustard", "guest_mint", "", "guest_blue"] },
-          { model: "dining_round", x: 16.6, z: 7.4, guests: ["guest_coral", "guest_mustard"] },
+          { model: "dining_round", x: -3.2, z: 4.6, guests: ["guest_coral", "guest_mint"] },
+          { model: "dining_round", x: -3.2, z: 7.6, guests: ["guest_blue", "guest_mustard"] },
+          { model: "dining_square", x: 16.2, z: 4.6, guests: ["guest_mustard", ""] },
+          { model: "dining_round", x: 16.2, z: 7.6, guests: ["", "guest_coral"] },
         ],
         plants: [
-          { model: "plant_tropical", x: -5.7, z: 0.5 },
-          { model: "plant_bamboo", x: 18.7, z: 0.5 },
-          { model: "plant_pink", x: -5.7, z: 9.6 },
-          { model: "plant_blossom", x: 18.7, z: 9.6 },
+          { model: "plant_bamboo", x: -5.7, z: 9.6 },
+          { model: "plant_tropical", x: 18.7, z: 9.6 },
         ],
         extras: [
+          // Food stalls and carts line the dining room, and strings of lanterns run round the kitchen between four posts.
+          { model: "market_stall", x: -3.4, z: 1.2 },
+          { model: "market_stall", x: 16.4, z: 1.2 },
+          { model: "food_cart", x: -5.3, z: 6.1, turn: Math.PI / 2 },
+          { model: "food_cart", x: 18.3, z: 6.1, turn: -Math.PI / 2 },
+          { model: "lantern_post", x: -0.7, z: 9.9, turn: Math.PI },
+          { model: "lantern_post", x: 13.7, z: 9.9 },
+          { model: "lantern_post", x: -0.7, z: -0.1, turn: Math.PI },
+          { model: "lantern_post", x: 13.7, z: -0.1 },
+          { model: "lantern_string_long", x: 6.5, z: -0.1 },
+          { model: "lantern_string_long", x: 6.5, z: 9.9 },
+          { model: "lantern_string_side", x: -0.7, z: 4.9, turn: Math.PI / 2 },
+          { model: "lantern_string_side", x: 13.7, z: 4.9, turn: Math.PI / 2 },
           { model: "dining-detail-pack", x: 2.2, z: 10.1, scale: 1.15 },
           { model: "dining-detail-pack", x: 10.8, z: 10.1, scale: 1.15 },
         ],
       },
     },
     [
-      "V#T#L#N###P#V",
+      "VX#R##P##X#FV",
       "#S.........S#",
-      "#...........#",
-      "#.#OOO#####.#",
-      "R.#VVVVVVV#.W",
-      "#.#BB#Q####.W",
-      "#...........#",
-      "#S.........S#",
-      "V##X###E####V",
+      "T....v<<....O",
+      "L....vV^....O",
+      "N....vV^....G",
+      "B....vV^....G",
+      "B....vV^....Q",
+      "#S...>>^...S#",
+      "V#WW#VVV#C#EV",
     ],
-    { plates: 4, fire: true, difficulty: 5 },
+    { plates: 5, fire: true, difficulty: 5 },
   ),
 ];

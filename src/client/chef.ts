@@ -55,6 +55,13 @@ export interface ChefRig {
   actions: Record<ClipName, THREE.AnimationAction>;
   weights: Record<ClipName, number>;
   knife: THREE.Object3D;
+  // Held while scrubbing plates, in place of the knife.
+  sponge: THREE.Object3D;
+  // Bones the scrubbing motion is layered onto, and how far into that motion the chef is.
+  chest: THREE.Object3D | null;
+  arms: Array<THREE.Object3D | null>;
+  scrub: number;
+  time: number;
 }
 
 // A chef's toque, sized in the character pack's units and worn on the head bone.
@@ -106,6 +113,9 @@ export function createChef(seat: number, isLocal: boolean): ChefRig {
   const knife = model("knife");
   knife.visible = false;
   figure.getObjectByName("handslotr")?.add(knife);
+  const sponge = createSponge();
+  sponge.visible = false;
+  figure.getObjectByName("handslotr")?.add(sponge);
   group.add(figure);
 
   // A soft blob grounds the chef, and a coloured ring tells players apart; your own is brighter.
@@ -136,19 +146,50 @@ export function createChef(seat: number, isLocal: boolean): ChefRig {
     weights[name] = name === "idle" ? 1 : 0;
     actions[name].setEffectiveWeight(weights[name]).play();
   }
-  return { group, body: group, mixer, actions, weights, knife };
+  return {
+    group,
+    body: group,
+    mixer,
+    actions,
+    weights,
+    knife,
+    sponge,
+    chest: figure.getObjectByName("chest") ?? null,
+    arms: [figure.getObjectByName("upperarml") ?? null, figure.getObjectByName("upperarmr") ?? null],
+    scrub: 0,
+    time: 0,
+  };
+}
+
+// A kitchen sponge in the pack's units: yellow foam with a green scouring side, flecked with suds.
+function createSponge(): THREE.Group {
+  const sponge = new THREE.Group();
+  sponge.add(
+    mesh(new THREE.BoxGeometry(0.34, 0.16, 0.24), mat(0xffd84a, 0.9), 0, 0, 0),
+    mesh(new THREE.BoxGeometry(0.34, 0.07, 0.24), mat(0x3f9d57, 0.9), 0, 0.115, 0),
+  );
+  for (let i = 0; i < 4; i++) {
+    sponge.add(mesh(new THREE.SphereGeometry(0.07, 8, 6), mat(0xffffff, 0.2), -0.12 + i * 0.08, -0.08, (i % 2) * 0.08 - 0.04));
+  }
+  sponge.traverse((child) => (child.castShadow = true));
+  return sponge;
 }
 
 // How far above the head bone the toque sits, in the pack's units.
 const TOQUE_HEIGHT = 0.95;
 
-// Mixes the clips for this frame: standing, running, carrying or chopping.
+// Mixes the clips for this frame: standing, running, carrying, chopping or scrubbing at the sink.
 export function animateChef(rig: ChefRig, player: PlayerState, dt: number): void {
   const speed = playerSpeedFraction(player);
   const moving = speed > 0.12;
   const wanted: Partial<Record<ClipName, number>> = {};
+  const washing = Boolean(player.washing);
   if (player.chopping) {
     wanted.chop = 1;
+  } else if (washing) {
+    // Both hands reach forward into the basin, the way they hold a carried dish.
+    wanted.idleLegs = 1;
+    wanted.carry = 1;
   } else if (player.held) {
     wanted[moving ? "runLegs" : "idleLegs"] = 1;
     wanted.carry = 1;
@@ -164,5 +205,22 @@ export function animateChef(rig: ChefRig, player: PlayerState, dt: number): void
   rig.actions.run.timeScale = rig.actions.runLegs.timeScale = 0.6 + speed * 0.7;
   rig.actions.chop.timeScale = 1.6;
   rig.knife.visible = player.chopping;
+  rig.sponge.visible = washing;
   rig.mixer.update(dt);
+
+  // Scrubbing is layered on top of the clips: lean over the sink and work the sponge round in circles.
+  rig.time += dt;
+  rig.scrub += ((washing ? 1 : 0) - rig.scrub) * blend;
+  if (rig.scrub < 0.01) return;
+  const circle = rig.time * 11;
+  if (rig.chest) {
+    rig.chest.rotation.x += 0.28 * rig.scrub;
+    rig.chest.rotation.y += Math.sin(circle) * 0.16 * rig.scrub;
+  }
+  rig.arms.forEach((arm, side) => {
+    if (!arm) return;
+    const phase = circle + side * Math.PI;
+    arm.rotation.x += Math.sin(phase) * 0.32 * rig.scrub;
+    arm.rotation.z += Math.cos(phase) * 0.22 * rig.scrub;
+  });
 }
