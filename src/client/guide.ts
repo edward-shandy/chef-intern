@@ -1,5 +1,6 @@
 import { LEVELS, type Level } from "../shared/level";
 import { READY_SECONDS, RECIPES, type GameState } from "../shared/sim";
+import { characterName } from "../shared/characters";
 import { ICONS, RECIPE_ICONS, SEATS } from "./hud";
 import { illustration, type Scene } from "./illustrations";
 
@@ -110,7 +111,7 @@ export function createGuide(onReady: () => void): Guide {
     const chefs = state.players
       .map((player) => {
         const ready = state.ready.includes(player.id);
-        const name = player.name || SEATS[player.id % SEATS.length].name;
+        const name = player.name || characterName(player.character);
         return `<span class="${ready ? "is-ready" : ""}" style="--seat:${SEATS[player.id % SEATS.length].colour}">${ready ? "✓" : "…"} ${escape(name)}</span>`;
       })
       .join("");

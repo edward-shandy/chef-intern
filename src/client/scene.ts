@@ -57,6 +57,8 @@ interface ItemView {
 interface ChefView {
   rig: ChefRig;
   isLocal: boolean;
+  // The character the rig was built as, so a change of chef in the lobby rebuilds it.
+  character: string;
   held: ItemView | null;
   spray: THREE.Group;
   // Name floating over the chef, and the text it was drawn for.
@@ -402,14 +404,15 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
     for (const [id, view] of chefs) {
       const player = state.players.find((other) => other.id === id);
       // A rig built before we knew our own seat is rebuilt so the right chef gets the bright ring.
-      if (!player || view.isLocal !== (id === localId)) removeChef(id, view);
+      if (!player || view.isLocal !== (id === localId) || view.character !== player.character) removeChef(id, view);
     }
 
     for (const player of state.players) {
       let view = chefs.get(player.id);
       if (!view) {
         const isLocal = player.id === localId;
-        view = { rig: createChef(player.id, isLocal), isLocal, held: null, spray: createSpray(), tag: null, tagText: "" };
+        const character = player.character;
+        view = { rig: createChef(player.id, isLocal, character), isLocal, character, held: null, spray: createSpray(), tag: null, tagText: "" };
         view.rig.group.add(view.spray);
         view.rig.group.rotation.y = player.facing;
         world.add(view.rig.group);
@@ -506,8 +509,20 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
     fog.near = distance + 8;
     fog.far = distance + 40;
   };
-  window.addEventListener("resize", resize);
-  resize();
+  // The canvas is measured after layout rather than on the window's resize event: iOS fires that event mid-rotation,
+  // before the page has its new size, which left the old drawing buffer stretched over the new shape (a squashed kitchen).
+  let measured = "";
+  const fit = () => {
+    const size = `${canvas.clientWidth}x${canvas.clientHeight}`;
+    if (size === measured || canvas.clientWidth === 0 || canvas.clientHeight === 0) return;
+    measured = size;
+    resize();
+  };
+  new ResizeObserver(fit).observe(canvas);
+  window.addEventListener("resize", fit);
+  // Belt and braces for rotations whose last layout change reports no resize at all.
+  window.addEventListener("orientationchange", () => [100, 400, 900].forEach((ms) => setTimeout(fit, ms)));
+  fit();
   applyMood();
 
   return {

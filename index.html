@@ -46,18 +46,43 @@
         <div class="lobby-side">
           <p class="lobby-kicker">Kitchen code</p>
           <h2 id="room-code" class="lobby-code"></h2>
-          <input id="chef-name" class="lobby-name" maxlength="12" placeholder="Your name" autocomplete="off" spellcheck="false" aria-label="Your name" />
           <ul id="lobby-chefs" class="lobby-chefs"></ul>
           <button id="start" class="button button-primary" type="button">Start service <kbd>Enter</kbd></button>
           <button id="invite" class="button" type="button">Copy invite link</button>
           <button id="leave-lobby" class="button button-quiet" type="button">Back to the front door</button>
         </div>
         <div class="lobby-main">
-          <div class="lobby-head">
-            <p class="lobby-kicker">Choose a kitchen</p>
-            <span id="level-count" class="lobby-count"></span>
+          <!-- Two steps: the crew picks a kitchen together, then each player picks a chef and a name. -->
+          <div class="lobby-steps" role="tablist" aria-label="Setup">
+            <button type="button" role="tab" data-step="kitchen" aria-selected="true"><b>1</b> Kitchen</button>
+            <button type="button" role="tab" data-step="chef" aria-selected="false"><b>2</b> Your chef</button>
           </div>
-          <div id="levels" class="level-grid" role="group" aria-label="Kitchen"></div>
+          <div class="lobby-step" data-panel="kitchen" role="tabpanel">
+            <div class="lobby-head">
+              <p class="lobby-kicker">Choose a kitchen</p>
+              <span id="level-count" class="lobby-count"></span>
+            </div>
+            <div id="levels" class="level-grid" role="group" aria-label="Kitchen"></div>
+            <button id="to-chef" class="button button-primary lobby-next" type="button">Next: pick your chef →</button>
+          </div>
+          <div class="lobby-step" data-panel="chef" role="tabpanel" hidden>
+            <div class="chef-pick">
+              <figure class="chef-preview">
+                <img id="chef-portrait" alt="" hidden />
+                <figcaption id="chef-pick-name">Chef</figcaption>
+              </figure>
+              <div class="chef-pick-form">
+                <label class="lobby-kicker" for="chef-name">Your name</label>
+                <input id="chef-name" class="lobby-name" maxlength="12" placeholder="Your name" autocomplete="off" spellcheck="false" />
+                <p class="lobby-kicker">Pick a chef</p>
+                <div id="characters" class="character-grid" role="radiogroup" aria-label="Chef"></div>
+              </div>
+            </div>
+            <div class="lobby-step-foot">
+              <button id="back-kitchen" class="button button-quiet" type="button">← Kitchens</button>
+              <button id="start-chef" class="button button-primary" type="button">Start service <kbd>Enter</kbd></button>
+            </div>
+          </div>
         </div>
       </div>
     </section>

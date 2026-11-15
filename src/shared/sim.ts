@@ -1,4 +1,5 @@
 import { beltNext, burns, holdsItems, isFixture, LEVELS, tileAt, type Level } from "./level";
+import { isCharacter, seatCharacter, type CharacterId } from "./characters";
 import { isSoup, RECIPES, ROAST_OF, SOUP_OF, type DishPart, type Ingredient, type RecipeId } from "./recipes";
 
 export { RECIPES, type DishPart, type Ingredient, type RecipeId };
@@ -74,8 +75,10 @@ export interface Order {
 
 export interface PlayerState {
   id: number;
-  // Name the player typed in the lobby, or empty to show the seat's character name.
+  // Name the player typed in the lobby, or empty to show the character's own name.
   name: string;
+  // Which chef this player picked in the lobby.
+  character: CharacterId;
   x: number;
   z: number;
   vx: number;
@@ -216,12 +219,13 @@ export function freePlayerSlot(state: GameState, maxPlayers: number): number | n
 
 export const NAME_LENGTH = 12;
 
-export function addPlayer(state: GameState, id: number, name = ""): void {
+export function addPlayer(state: GameState, id: number, name = "", character: CharacterId = seatCharacter(id)): void {
   const { spawns } = LEVELS[state.level];
   const spawn = spawns[id % spawns.length];
   state.players.push({
     id,
     name,
+    character,
     x: spawn.x,
     z: spawn.z,
     vx: 0,
@@ -559,7 +563,7 @@ export function chooseLevel(state: GameState, level: number): void {
   if (state.phase !== "waiting" || !LEVELS[level] || level === state.level) return;
   const players = state.players;
   Object.assign(state, createGame(level, state.seed, true));
-  for (const { id, name } of players) addPlayer(state, id, name);
+  for (const { id, name, character } of players) addPlayer(state, id, name, character);
 }
 
 // Names a chef, keeping only a short run of letters, digits and a few marks.
@@ -570,6 +574,12 @@ export function renamePlayer(state: GameState, id: number, name: unknown): void 
     .replace(/[^\p{L}\p{N} _.-]/gu, "")
     .trim()
     .slice(0, NAME_LENGTH);
+}
+
+// Swaps a chef's character; any character can be picked, even one a teammate already plays.
+export function setCharacter(state: GameState, id: number, character: unknown): void {
+  const player = state.players.find((other) => other.id === id);
+  if (player && isCharacter(character)) player.character = character;
 }
 
 // Ends the warm-up; anyone in the room may call it once everybody has arrived.
@@ -601,7 +611,7 @@ function restartRound(state: GameState): void {
   const players = state.players;
   const level = state.won ? (state.level + 1) % LEVELS.length : state.level;
   Object.assign(state, createGame(level, state.seed, false, state.won ? "ready" : "playing"));
-  for (const { id, name } of players) addPlayer(state, id, name);
+  for (const { id, name, character } of players) addPlayer(state, id, name, character);
 }
 
 // Pushes the player's circle out of every solid tile it overlaps.

@@ -27,4 +27,6 @@ export type ClientMessage =
   | { type: "level"; level: number }
   // What this chef wants to be called; the server trims it.
   | { type: "name"; name: string }
+  // Which chef this player wants to be, by id from CHARACTERS.
+  | { type: "character"; character: string }
   | { type: "ping"; t: number };

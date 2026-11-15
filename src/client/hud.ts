@@ -1,4 +1,6 @@
+import { characterName } from "../shared/characters";
 import { LEVELS, type Level, type Tile } from "../shared/level";
+import { onPortraits, portraitOf } from "./portraits";
 import { RECIPES, ROUND_SECONDS, TARGET_SCALE, type GameState, type RecipeId } from "../shared/sim";
 
 export type IconName = "lettuce" | "tomato" | "onion" | "soup" | "arrow" | "chicken" | "grill" | "roast";
@@ -118,6 +120,10 @@ export function createHud(onLevel: (level: number) => void): {
   let lobbyKey = "";
   const cards = new Map<number, HTMLElement>();
   let shownScore: number | null = null;
+  let portraitsReady = false;
+  onPortraits(() => {
+    portraitsReady = true;
+  });
 
   const createCard = (recipe: RecipeId): HTMLElement => {
     const card = document.createElement("article");
@@ -160,8 +166,9 @@ export function createHud(onLevel: (level: number) => void): {
       fireAlert.hidden = state.phase === "over" || Object.keys(state.fires ?? {}).length === 0;
       // One row per seat, rebuilt only when someone joins or leaves.
       const seats = state.players.map((player) => player.id).sort();
-      const names = new Map(state.players.map((player) => [player.id, player.name]));
-      const key = `${seats.map((id) => `${id}=${names.get(id)}`).join(",")}:${localId}`;
+      const names = new Map(state.players.map((player) => [player.id, player.name || characterName(player.character)]));
+      const looks = new Map(state.players.map((player) => [player.id, player.character]));
+      const key = `${seats.map((id) => `${id}=${names.get(id)}/${looks.get(id)}`).join(",")}:${localId}:${portraitsReady}`;
       if (key !== lobbyKey) {
         lobbyKey = key;
         lobbyChefs.replaceChildren(
@@ -171,6 +178,12 @@ export function createHud(onLevel: (level: number) => void): {
             row.className = taken ? "" : "empty";
             row.style.setProperty("--seat", taken ? seat.colour : "transparent");
             row.textContent = taken ? names.get(id) || seat.name : "Waiting for a chef…";
+            // Each chef in the room shows as their portrait, framed in their seat's colour.
+            const portrait = taken ? portraitOf(looks.get(id)!) : null;
+            if (portrait) {
+              row.classList.add("has-face");
+              row.prepend(Object.assign(document.createElement("img"), { src: portrait, alt: "", className: "lobby-face" }));
+            }
             if (id === localId) row.append(Object.assign(document.createElement("small"), { textContent: "You" }));
             return row;
           }),

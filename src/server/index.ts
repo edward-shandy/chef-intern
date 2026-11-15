@@ -12,6 +12,7 @@ import {
   addPlayer,
   chooseLevel,
   renamePlayer,
+  setCharacter,
   createGame,
   freePlayerSlot,
   IDLE_INPUT,
@@ -149,6 +150,8 @@ export class Room extends DurableObject<Env> {
       renamePlayer(this.game, this.attachmentOf(socket)!.id, message.name);
     } else if (message.type === "start") {
       startRound(this.game);
+    } else if (message.type === "character") {
+      setCharacter(this.game, this.attachmentOf(socket)!.id, message.character);
     } else if (message.type === "ready") {
       markReady(this.game, this.attachmentOf(socket)!.id);
     } else if (message.type === "ping" && typeof message.t === "number") {

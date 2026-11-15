@@ -1,12 +1,36 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { clone } from "three/addons/utils/SkeletonUtils.js";
+import { seatCharacter } from "../shared/characters";
 import { playerSpeedFraction, type PlayerState } from "../shared/sim";
-import { model, MODEL_SCALE } from "./assets";
+import { decoration, model, MODEL_SCALE } from "./assets";
 import { COLORS, mat, mesh } from "./models";
 
-// KayKit Adventurers characters (CC0), trimmed by scripts/trim_character.py; one per seat.
+// KayKit Adventurers characters (CC0), trimmed by scripts/trim_character.py; each seat starts as one of them.
 const CHARACTERS = ["knight", "barbarian", "mage", "rogue"];
+
+// The animal chefs borrow an adventurer's rig and animations: its head is swapped for the animal's own, a tail is
+// hung on the hips, and the body is repainted as a white chef's jacket with furry arms and dark trousers.
+interface AnimalLook {
+  base: (typeof CHARACTERS)[number];
+  fur: number;
+  jacket?: number;
+  trousers?: number;
+}
+const ANIMALS: Record<string, AnimalLook> = {
+  mouse: { base: "rogue", fur: 0xa7abb8 },
+  cat: { base: "rogue", fur: 0xf0953a },
+  bear: { base: "barbarian", fur: 0x8a5a3c },
+  frog: { base: "mage", fur: 0x6cc04a, trousers: 0x2f6d3a },
+  penguin: { base: "knight", fur: 0x2a2d38, trousers: 0x2a2d38 },
+  fox: { base: "rogue", fur: 0xe8692a },
+  pig: { base: "barbarian", fur: 0xf4a7b5 },
+  elephant: { base: "barbarian", fur: 0x9aa7c4, trousers: 0x4a4f63 },
+};
+const TAILLESS = new Set(["frog"]);
+
+// Decoration props the animal chefs need, for loading with the kitchen's own.
+export const CHEF_PROPS = Object.keys(ANIMALS).flatMap((id) => [`head_${id}`, ...(TAILLESS.has(id) ? [] : [`tail_${id}`])]);
 
 type ClipName = "idle" | "run" | "idleLegs" | "runLegs" | "carry" | "chop";
 const CLIP_NAMES: ClipName[] = ["idle", "run", "idleLegs", "runLegs", "carry", "chop"];
@@ -93,8 +117,10 @@ function blobTexture(): THREE.CanvasTexture {
   return new THREE.CanvasTexture(canvas);
 }
 
-export function createChef(seat: number, isLocal: boolean): ChefRig {
-  const source = sources[seat % sources.length];
+export function createChef(seat: number, isLocal: boolean, character: string = seatCharacter(seat)): ChefRig {
+  const animal = ANIMALS[character];
+  const human = CHARACTERS.indexOf(animal?.base ?? character);
+  const source = sources[human >= 0 ? human : seat % sources.length];
   const colour = COLORS.shirts[seat % COLORS.shirts.length];
   const group = new THREE.Group();
 
@@ -106,6 +132,7 @@ export function createChef(seat: number, isLocal: boolean): ChefRig {
     // Skinned meshes are culled by their rest pose, which is wrong once they animate.
     child.frustumCulled = false;
   });
+  if (animal) dressAnimal(figure, character, animal);
   const toque = createToque();
   toque.position.y = TOQUE_HEIGHT;
   toque.traverse((child) => (child.castShadow = true));
@@ -159,6 +186,25 @@ export function createChef(seat: number, isLocal: boolean): ChefRig {
     scrub: 0,
     time: 0,
   };
+}
+
+// Swaps the adventurer's head for the animal's, adds its tail and repaints the body as a chef's whites.
+function dressAnimal(figure: THREE.Object3D, id: string, look: AnimalLook): void {
+  const jacket = new THREE.MeshStandardMaterial({ color: look.jacket ?? 0xfbf7ee, roughness: 0.75 });
+  const fur = new THREE.MeshStandardMaterial({ color: look.fur, roughness: 0.8 });
+  const trousers = new THREE.MeshStandardMaterial({ color: look.trousers ?? 0x3a3540, roughness: 0.8 });
+  figure.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) return;
+    if (child.name.endsWith("_Head")) child.visible = false;
+    else if (child.name.endsWith("_Body")) child.material = jacket;
+    else if (child.name.includes("_Arm")) child.material = fur;
+    else if (child.name.includes("_Leg")) child.material = trousers;
+  });
+  const head = decoration(`head_${id}`);
+  if (head) figure.getObjectByName("head")?.add(head);
+  const tail = TAILLESS.has(id) ? null : decoration(`tail_${id}`);
+  if (tail) figure.getObjectByName("hips")?.add(tail);
+  for (const part of [head, tail]) part?.traverse((child) => (child.castShadow = true));
 }
 
 // A kitchen sponge in the pack's units: yellow foam with a green scouring side, flecked with suds.

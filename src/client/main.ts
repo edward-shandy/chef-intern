@@ -2,7 +2,10 @@ import { MAX_PLAYERS, ROOM_CODE_PATTERN } from "../shared/constants";
 import { LEVELS } from "../shared/level";
 import { inReach, targetTile, type GameState, type PlayerInput } from "../shared/sim";
 import { loadModels, loadProps } from "./assets";
-import { loadChefs } from "./chef";
+import { CHEF_PROPS, loadChefs } from "./chef";
+import { isCharacter } from "../shared/characters";
+import { createChefPicker } from "./lobbySteps";
+import { renderPortraits } from "./portraits";
 import { wireFullscreen } from "./fullscreen";
 import { createGuide } from "./guide";
 import { createHud } from "./hud";
@@ -145,6 +148,7 @@ function playRoom(roomCode: string): void {
       if (message.type === "welcome") {
         world.welcome(message.id, now);
         if (nameInput.value.trim()) room.send({ type: "name", name: nameInput.value });
+        if (savedCharacter) room.send({ type: "character", character: savedCharacter });
         // Forces whatever is held down right now to be sent again under the new session.
         Object.assign(sent, { moveX: 0, moveZ: 0, use: false, aim: null, dash: false });
       } else if (message.type === "pong") {
@@ -155,6 +159,7 @@ function playRoom(roomCode: string): void {
         world.onSnapshot(message, message.acks, now);
         hud.update(message, world.localId);
         guide.update(message, world.localId);
+        picker.update(message, world.localId);
         sound.update(message, world.localId);
         if (countChanged) renderStatus();
       }
@@ -170,6 +175,23 @@ function playRoom(roomCode: string): void {
     if (world.latest?.phase === "waiting") room.send({ type: "start" });
   };
   element("#start").addEventListener("click", start);
+  // Each player's chef is remembered on this device, like the name, and sent again whenever the seat is taken.
+  let savedCharacter: string | null = null;
+  try {
+    const stored = localStorage.getItem("chef-intern-character");
+    savedCharacter = isCharacter(stored) ? stored : null;
+  } catch {
+    // Without storage the seat's own chef is used.
+  }
+  const picker = createChefPicker((character) => {
+    savedCharacter = character;
+    room.send({ type: "character", character });
+    try {
+      localStorage.setItem("chef-intern-character", character);
+    } catch {
+      // The pick still holds for this visit.
+    }
+  }, start);
   window.addEventListener("keydown", (event) => {
     // Enter in the name box only confirms the name.
     if (event.target === nameInput) {
@@ -283,7 +305,10 @@ function playRoom(roomCode: string): void {
         ]
       : []),
   ]).filter(Boolean);
-  Promise.all([loadModels(), loadChefs(), loadProps([...new Set(decorNames)])]).then(startGame, (error) => {
+  Promise.all([loadModels(), loadChefs(), loadProps([...new Set([...decorNames, ...CHEF_PROPS])])]).then(() => {
+    startGame();
+    renderPortraits();
+  }, (error) => {
     status.dataset.state = "offline";
     status.textContent = "Could not load the kitchen";
     console.error(error);

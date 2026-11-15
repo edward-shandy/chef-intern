@@ -33,13 +33,15 @@ kbd {
   box-shadow: 0 2px 0 rgb(0 0 0 / 0.3);
 }
 
+/* Pinned to the edges rather than sized in viewport units: on iPhones 100vw/100dvh lag behind a rotation,
+   especially in the Home Screen app, while a fixed box always matches the screen the page really has. */
 #game {
+  position: fixed;
+  inset: 0;
   display: block;
+  width: 100%;
+  height: 100%;
   touch-action: none;
-  width: 100vw;
-  height: 100vh;
-  /* The dynamic height excludes a phone browser's address bar, which 100vh would draw the kitchen underneath. */
-  height: 100dvh;
 }
 
 /* Darkens the corners so the eye stays on the kitchen. */
@@ -1884,4 +1886,234 @@ body.touch .stat {
 
 .lobby {
   padding-top: calc(56px + env(safe-area-inset-top));
+}
+
+/* ---- lobby steps: kitchen, then your chef ---- */
+
+.lobby-main {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.lobby-steps {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 14px;
+  background: rgb(36 29 48 / 0.07);
+}
+
+.lobby-steps button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 10px;
+  font: 900 14px/1.2 inherit;
+  font-family: inherit;
+  color: var(--ink);
+  background: transparent;
+  opacity: 0.6;
+  cursor: pointer;
+}
+
+.lobby-steps button b {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 12px;
+  color: #fff;
+  background: rgb(36 29 48 / 0.45);
+}
+
+.lobby-steps button[aria-selected="true"] {
+  background: #fff;
+  box-shadow: 0 2px 0 rgb(36 29 48 / 0.12);
+  opacity: 1;
+}
+
+.lobby-steps button[aria-selected="true"] b {
+  background: #d2411f;
+}
+
+.lobby-step {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  min-height: 0;
+}
+
+.lobby-step[hidden] {
+  display: none;
+}
+
+.lobby-next {
+  justify-self: end;
+}
+
+.lobby-step-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.chef-pick {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+  min-height: 0;
+}
+
+/* The chosen chef, large, on a warm spotlight. */
+.chef-preview {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 10px 10px 12px;
+  border-radius: 18px;
+  background: radial-gradient(circle at 50% 40%, #ffe7c2, #f6d2a8 70%);
+  box-shadow: inset 0 0 0 2px rgb(36 29 48 / 0.08);
+}
+
+.chef-preview img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: contain;
+  animation: chef-bob 2.4s ease-in-out infinite;
+}
+
+.chef-preview figcaption {
+  font-size: 20px;
+  font-weight: 900;
+}
+
+@keyframes chef-bob {
+  50% {
+    transform: translateY(-4px) rotate(-1.5deg);
+  }
+}
+
+.chef-pick-form {
+  display: grid;
+  gap: 8px;
+  min-height: 0;
+}
+
+.chef-pick-form .lobby-name {
+  margin-bottom: 4px;
+}
+
+.character-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 8px;
+  max-height: min(60dvh, 460px);
+  padding: 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.character-card {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 6px 4px 8px;
+  border: 2px solid rgb(36 29 48 / 0.12);
+  border-radius: 14px;
+  font-family: inherit;
+  color: var(--ink);
+  background: #fff;
+  cursor: pointer;
+  transition:
+    transform 0.14s ease-out,
+    border-color 0.14s ease-out;
+}
+
+@media (hover: hover) {
+  .character-card:hover {
+    transform: translateY(-2px);
+    border-color: rgb(36 29 48 / 0.35);
+  }
+}
+
+.character-card[aria-checked="true"] {
+  border-color: #d2411f;
+  background: #fff3e4;
+  box-shadow: 0 0 0 3px rgb(210 65 31 / 0.22);
+}
+
+.character-face {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 10px;
+  background: radial-gradient(circle at 50% 40%, #fff1dc, #f3dcc0);
+}
+
+.character-face img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* Until the portraits are drawn, an initial stands in. */
+.character-face b {
+  font-size: 28px;
+  font-weight: 900;
+  opacity: 0.3;
+}
+
+.character-name {
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.lobby-chefs li.has-face::before {
+  display: none;
+}
+
+.lobby-face {
+  width: 34px;
+  height: 34px;
+  margin: -4px 0;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #fff1dc;
+  box-shadow: 0 0 0 3px var(--seat);
+}
+
+@media (max-width: 720px) {
+  /* On a phone the steps come first, then the room code and the crew. */
+  .lobby-main {
+    order: -1;
+  }
+
+  .chef-pick {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .chef-preview {
+    grid-template-columns: 110px auto;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .character-grid {
+    grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
+    max-height: none;
+    overflow: visible;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chef-preview img {
+    animation: none;
+  }
 }
