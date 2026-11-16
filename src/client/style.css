@@ -348,7 +348,7 @@ kbd {
 
 .lobby-main {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   gap: 10px;
   min-height: 0;
 }
@@ -365,13 +365,90 @@ kbd {
   opacity: 0.6;
 }
 
+/* Theme cards sit in one row above the kitchens and scroll sideways if there are ever too many. */
+.theme-row {
+  display: flex;
+  gap: 10px;
+  padding: 4px;
+  overflow-x: auto;
+}
+
+.theme-card {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 3px;
+  width: 190px;
+  padding: 6px 6px 8px;
+  border: 2px solid rgb(36 29 48 / 0.14);
+  border-radius: 14px;
+  font-family: inherit;
+  text-align: left;
+  color: var(--ink);
+  background: #fff;
+  cursor: pointer;
+  transition:
+    transform 0.14s ease-out,
+    border-color 0.14s ease-out,
+    box-shadow 0.14s ease-out;
+}
+
+.theme-card:active {
+  transform: scale(0.98);
+}
+
+.theme-card[aria-pressed="true"] {
+  border-color: var(--teal);
+  box-shadow: 0 0 0 3px rgb(47 127 134 / 0.25);
+}
+
+.theme-art {
+  display: block;
+  overflow: hidden;
+  border-radius: 9px;
+}
+
+.theme-art svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.theme-name {
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1.15;
+}
+
+.theme-blurb {
+  font-size: 11.5px;
+  font-weight: 700;
+  opacity: 0.7;
+}
+
+.level-card[hidden] {
+  display: none;
+}
+
+@media (max-height: 480px) {
+  .theme-card {
+    grid-template-columns: 70px 1fr;
+    align-items: center;
+    column-gap: 8px;
+    width: 230px;
+  }
+
+  .theme-art {
+    grid-row: span 2;
+  }
+}
+
 /* Cards wrap into as many columns as fit and the grid scrolls, so more kitchens need no new layout. */
 .level-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
   gap: 12px;
   align-content: start;
-  max-height: min(64dvh, 560px);
+  max-height: min(46dvh, 460px);
   padding: 4px;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -483,6 +560,11 @@ kbd {
 .level-tag-wash {
   color: #1d5f8a;
   background: #d9effb;
+}
+
+.level-tag-grill {
+  color: #6b3a14;
+  background: #f7dfc4;
 }
 
 .level-tag-fire {

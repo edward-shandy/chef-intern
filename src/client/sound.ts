@@ -24,7 +24,13 @@ interface Heard {
 
 const describe = (item: Item | null): string => (item ? JSON.stringify(item, (key, value) => (key === "chop" || key === "cook" ? undefined : value)) : "");
 const potStage = (item: Item): string =>
-  item.type !== "pot" || item.contents === 0 ? "" : item.cook >= BURN_AT ? "burnt" : item.cook >= 1 ? "ready" : "raw";
+  (item.type !== "pot" || item.contents === 0) && (item.type !== "ingredient" || item.cook <= 0)
+    ? ""
+    : item.cook >= BURN_AT
+      ? "burnt"
+      : item.cook >= 1
+        ? "ready"
+        : "raw";
 
 export interface Sound {
   // Compares a snapshot with the previous one and plays whatever changed.

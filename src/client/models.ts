@@ -12,6 +12,8 @@ import {
 } from "../shared/sim";
 import { decoration, model, MODEL_SCALE, modelGeometry, modelMaterial, type ModelName } from "./assets";
 import { createExtinguisher } from "./fire";
+import { CODE_FOOD, createBurger, createCrate, createFood, createGrillTop, type Stage } from "./food";
+import { createSea, SEA_SAND } from "./sea";
 import { createStreet, streetGround } from "./street";
 
 export { animateStreet } from "./street";
@@ -71,7 +73,8 @@ export const COLORS = {
 
 export const WORKTOP_Y = 0.5;
 // How far above the worktop an item rests on each kind of station.
-export const restLift = (kind: TileKind): number => (kind === "board" ? 0.075 : kind === "stove" ? 0.105 : 0);
+export const restLift = (kind: TileKind): number =>
+  kind === "board" ? 0.075 : kind === "stove" ? 0.105 : kind === "grill" ? 0.09 : 0;
 
 // Places a KayKit model in the world, scaled from the pack's grid to ours.
 function prop(name: ModelName, x: number, y: number, z: number, turn = 0, scale = MODEL_SCALE): THREE.Mesh {
@@ -177,9 +180,11 @@ function floorTexture(level: Level, anisotropy: number): THREE.CanvasTexture {
         const x = tx * size;
         const z = tz * size;
         const seed = tx * 31 + tz * 17;
-        ctx.fillStyle = "#8fa3a8";
+        // The sea kitchens get cooler, glassier tiles.
+        const sea = level.theme === "sea";
+        ctx.fillStyle = sea ? "#5f9aa6" : "#8fa3a8";
         ctx.fillRect(x, z, size, size);
-        ctx.fillStyle = (tx + tz) % 2 === 0 ? "#f4ecdc" : "#bcd0d2";
+        ctx.fillStyle = (tx + tz) % 2 === 0 ? (sea ? "#eefcff" : "#f4ecdc") : sea ? "#a5e0dc" : "#bcd0d2";
         ctx.fillRect(x + 2, z + 2, size - 4, size - 4);
         ctx.fillStyle =
           noise(seed) > 0.5 ? `rgba(255, 255, 255, ${noise(seed + 1) * 0.1})` : `rgba(70, 30, 10, ${noise(seed + 1) * 0.09})`;
@@ -273,9 +278,11 @@ export function createRoom(level: Level, anisotropy: number): THREE.Group {
   // A kitchen on a street stands on lawn rather than on the wooden deck.
   const deck = mesh(
     new THREE.PlaneGeometry(90, 90),
-    plan?.street
-      ? new THREE.MeshStandardMaterial({ color: streetGround(level), roughness: 0.95 })
-      : new THREE.MeshStandardMaterial({ map: deckMap, roughness: 0.9 }),
+    level.theme === "sea"
+      ? new THREE.MeshStandardMaterial({ color: SEA_SAND, roughness: 0.95 })
+      : plan?.street
+        ? new THREE.MeshStandardMaterial({ color: streetGround(level), roughness: 0.95 })
+        : new THREE.MeshStandardMaterial({ map: deckMap, roughness: 0.9 }),
     width / 2,
     -0.02,
     height / 2,
@@ -288,6 +295,8 @@ export function createRoom(level: Level, anisotropy: number): THREE.Group {
   const guests: THREE.Object3D[] = [];
   const street = createStreet(level, anisotropy);
   if (street) room.add(street.group);
+  const sea = level.theme === "sea" ? createSea(level, anisotropy, guests) : null;
+  if (sea) room.add(sea.group);
   if (plan) {
     // A tiled dining floor surrounds the kitchen and sits just under its own floor.
     const depth = height + 3.6;
@@ -386,7 +395,7 @@ export function createRoom(level: Level, anisotropy: number): THREE.Group {
       glow.position.set(x, 2.8, height / 2);
       room.add(glow);
     }
-  } else {
+  } else if (!sea) {
     // Without a restaurant plan the back wall is a row of 2-tile KayKit panels, two with windows.
     const panels = Math.ceil(width / 2);
     for (let i = 0; i < panels; i++) {
@@ -398,6 +407,7 @@ export function createRoom(level: Level, anisotropy: number): THREE.Group {
   }
   room.userData.guests = guests;
   if (street) room.userData.street = street.view;
+  if (sea) room.userData.sea = sea.view;
 
   // Pendant lamps hang in front of the wall and pool warm light on the back counters.
   const shade = new THREE.MeshStandardMaterial({
@@ -465,21 +475,25 @@ function part(name: ModelName, x = 0, y = 0, z = 0, turn = 0, scale = 1, ruined 
   return result;
 }
 
-const WHOLE: Record<Ingredient, ModelName> = {
+const WHOLE: Partial<Record<Ingredient, ModelName>> = {
   tomato: "food_ingredient_tomato",
   lettuce: "food_ingredient_lettuce",
   onion: "food_ingredient_onion",
 };
-const CHOPPED: Record<Ingredient, ModelName> = {
+const CHOPPED: Partial<Record<Ingredient, ModelName>> = {
   tomato: "food_ingredient_tomato_slices",
   lettuce: "food_ingredient_lettuce_chopped",
   onion: "food_ingredient_onion_chopped",
 };
-const CRATES: Record<Ingredient, ModelName> = {
+const CRATES: Partial<Record<Ingredient, ModelName>> = {
   tomato: "crate_tomatoes",
   lettuce: "crate_lettuce",
   onion: "crate_onions",
 };
+
+// Which look a code-built ingredient needs.
+const foodStage = (item: Extract<Item, { type: "ingredient" }>): Stage =>
+  item.cook >= BURN_AT ? "burnt" : item.cook >= 1 ? "cooked" : item.chop >= 1 ? "chopped" : "whole";
 
 // Builds an item with its origin at the base so it can sit on any surface.
 export function createItem(item: Item): THREE.Group {
@@ -489,26 +503,32 @@ export function createItem(item: Item): THREE.Group {
   group.add(parts);
 
   if (item.type === "ingredient") {
-    if (!isChopped(item)) parts.add(part(WHOLE[item.kind]));
+    if (CODE_FOOD.includes(item.kind)) group.add(createFood(item.kind, foodStage(item)));
+    else if (!isChopped(item)) parts.add(part(WHOLE[item.kind]!));
     // The chopped lettuce model is off-centre, so it is nudged back over its tile.
-    else if (item.kind === "lettuce") parts.add(part(CHOPPED.lettuce, -0.3, 0, 0, 0, 0.9));
-    else parts.add(part(CHOPPED[item.kind]));
+    else if (item.kind === "lettuce") parts.add(part(CHOPPED.lettuce!, -0.3, 0, 0, 0, 0.9));
+    else parts.add(part(CHOPPED[item.kind]!));
   } else if (item.type === "plate") {
     if (item.contents.includes("tomato_soup")) {
       parts.add(part("food_stew"));
     } else {
       parts.add(part("plate"));
-      if (item.contents.includes("onion_soup")) parts.add(part("stew_bowl", 0, -0.04, 0));
-      const hasLettuce = item.contents.includes("lettuce");
+      if (item.contents.includes("onion_soup") || item.contents.includes("clam_soup")) parts.add(part("stew_bowl", 0, -0.04, 0));
+      // A burger is built in code; its lettuce and tomato go inside the bun rather than loose on the plate.
+      const burger = item.contents.includes("bun") || item.contents.includes("meat");
+      const hasLettuce = !burger && item.contents.includes("lettuce");
       if (hasLettuce) parts.add(part("food_ingredient_lettuce_slice", 0, 0.1, 0));
-      if (item.contents.includes("tomato")) {
+      if (!burger && item.contents.includes("tomato")) {
         const y = hasLettuce ? 0.15 : 0.08;
         parts.add(
           part("food_ingredient_tomato_slice", -0.12, y, 0.05, 0.4, 0.62),
           part("food_ingredient_tomato_slice", 0.14, y + 0.02, -0.06, 1.7, 0.62),
         );
       }
-      if (item.contents.includes("onion")) parts.add(part(CHOPPED.onion, 0, hasLettuce ? 0.15 : 0.08, 0, 0.8, 0.5));
+      if (item.contents.includes("onion")) parts.add(part(CHOPPED.onion!, 0, hasLettuce ? 0.15 : 0.08, 0, 0.8, 0.5));
+      if (burger) group.add(createBurger(item.contents));
+      if (item.contents.includes("seaweed")) group.add(Object.assign(createFood("seaweed", "chopped"), { position: new THREE.Vector3(-0.05, 0.03, 0) }));
+      if (item.contents.includes("fish")) group.add(Object.assign(createFood("fish", "cooked"), { position: new THREE.Vector3(0, 0.03, 0) }));
     }
   } else if (item.type === "dirty") {
     parts.add(part("plate_dirty"));
@@ -517,7 +537,7 @@ export function createItem(item: Item): THREE.Group {
   } else {
     const ruined = item.cook >= BURN_AT;
     const full = item.contents >= POT_CAPACITY;
-    parts.add(part(!full ? "pot_A" : item.kind === "onion" ? "pot_B_stew" : "pot_A_stew", 0, 0, 0, 0, 1, ruined));
+    parts.add(part(!full ? "pot_A" : item.kind === "tomato" ? "pot_A_stew" : "pot_B_stew", 0, 0, 0, 0, 1, ruined));
     if (!full && item.kind) {
       // Until the pot is full the chopped pieces lie inside it, so the count is visible.
       for (let i = 0; i < item.contents; i++) {
@@ -525,7 +545,12 @@ export function createItem(item: Item): THREE.Group {
         const x = Math.cos(angle) * 0.18;
         const z = Math.sin(angle) * 0.18;
         if (item.kind === "tomato") parts.add(part("food_ingredient_tomato_slice", x, 0.1 + i * 0.04, z, angle, 0.6));
-        else parts.add(part(CHOPPED[item.kind], x, 0.08, z, angle, 0.38));
+        else if (CODE_FOOD.includes(item.kind)) {
+          const piece = createFood(item.kind, "chopped");
+          piece.position.set(x, 0.1, z);
+          piece.scale.setScalar(1.3);
+          parts.add(piece);
+        } else parts.add(part(CHOPPED[item.kind]!, x, 0.08, z, angle, 0.38));
       }
     } else if (full && !ruined) {
       // Bubbles are animated by the scene while the pot is on a lit hob.
@@ -546,7 +571,7 @@ export function createItem(item: Item): THREE.Group {
 
 // Changes only when the item needs a different mesh, not on every progress tick.
 export function itemSignature(item: Item): string {
-  if (item.type === "ingredient") return `i:${item.kind}:${isChopped(item)}`;
+  if (item.type === "ingredient") return `i:${item.kind}:${foodStage(item)}`;
   if (item.type === "plate") return `p:${item.contents.join("+")}`;
   if (item.type === "dirty") return "d";
   if (item.type === "extinguisher") return "x";
@@ -556,10 +581,12 @@ export function itemSignature(item: Item): string {
 
 // Fraction and colour of the progress bar an item should show, if any.
 export function itemProgress(item: Item, onHob = true): { value: number; colour: number } | null {
-  if (item.type === "ingredient") {
+  if (item.type === "ingredient" && item.cook <= 0) {
     return item.chop > 0 && item.chop < 1 ? { value: item.chop, colour: COLORS.barChop } : null;
   }
-  if (item.type !== "pot" || item.contents < POT_CAPACITY || item.cook <= 0) return null;
+  // From here on it is heat: a full pot on a hob, or food on the grill.
+  if (item.type !== "ingredient" && (item.type !== "pot" || item.contents < POT_CAPACITY)) return null;
+  if (item.cook <= 0) return null;
   if (item.cook < 1) return { value: item.cook, colour: COLORS.barCook };
   // Past burnt, the bar fills red towards the moment the hob catches fire.
   if (item.cook > BURN_AT && onHob) return { value: (item.cook - BURN_AT) / (FIRE_AT - BURN_AT), colour: COLORS.barBurn };
@@ -579,6 +606,15 @@ export interface PotStatus {
 
 // What a pot should announce above itself: how full it is, or how its soup is doing.
 export function potStatus(item: Item, onHob = true): PotStatus | null {
+  // Grilled food gets the same badges as a pot once it starts to cook.
+  if (item.type === "ingredient") {
+    if (item.cook <= 0) return null;
+    const status: PotStatus = { badge: null, badgeColour: LABEL_DARK, steam: "light", ready: false, cooking: onHob && item.cook < BURN_AT };
+    if (item.cook > BURN_AT && onHob) Object.assign(status, { badge: "FIRE RISK!", badgeColour: "#d23c2c", steam: "dark", ready: true });
+    else if (item.cook >= BURN_AT) Object.assign(status, { badge: "BURNT", badgeColour: "#d23c2c", steam: "dark" });
+    else if (item.cook >= 1) Object.assign(status, { badge: "READY!", badgeColour: "#2f9e5b", ready: true });
+    return status;
+  }
   if (item.type !== "pot" || item.contents === 0) return null;
   const status: PotStatus = { badge: null, badgeColour: LABEL_DARK, steam: "none", ready: false, cooking: false };
   if (item.contents < POT_CAPACITY || item.cook === 0) {
@@ -606,6 +642,7 @@ const STATION_LABELS: Partial<Record<TileKind, string>> = {
   return: "DIRTY",
   wash: "WASH",
   extinguisher: "FIRE EXT.",
+  grill: "GRILL",
   trash: "TRASH",
 };
 
@@ -750,7 +787,14 @@ export function createStations(level: Level): Stations {
     }
 
     if (tile.kind === "crate" && tile.dispenses) {
-      group.add(prop(CRATES[tile.dispenses], x, top, z, turn, 0.43));
+      const model = CRATES[tile.dispenses];
+      if (model) group.add(prop(model, x, top, z, turn, 0.43));
+      else {
+        const crate = createCrate(tile.dispenses);
+        crate.position.set(x, top, z);
+        crate.rotation.y = turn;
+        group.add(crate);
+      }
     } else if (tile.kind === "board") {
       group.add(prop("cuttingboard", x, top, z, turn));
     } else if (tile.kind === "plates" && level.plates) {
@@ -797,6 +841,15 @@ export function createStations(level: Level): Stations {
       fire.visible = false;
       flames.set(index, fire);
       unshadowed.add(fire);
+    } else if (tile.kind === "grill") {
+      // The coals stand in for the stove's flame ring, shown while something cooks.
+      const grill = createGrillTop();
+      grill.group.position.set(x, top, z);
+      grill.group.rotation.y = turn;
+      grill.coals.position.set(x, top, z);
+      group.add(grill.group);
+      flames.set(index, grill.coals);
+      unshadowed.add(grill.coals);
     } else if (tile.kind === "serve") {
       group.add(mesh(box(1, 0.05, 1), servePad, x, top + 0.025, z));
       serveCentre.add(new THREE.Vector3(x, top, z));

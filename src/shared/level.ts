@@ -8,6 +8,8 @@ export type TileKind =
   | "board"
   | "stove"
   | "plates"
+  // Cooks a chopped fish fillet or patty laid straight on it.
+  | "grill"
   | "serve"
   // Dish washing: served plates come back dirty at the return hatch and are cleaned at the wash sink.
   | "return"
@@ -74,6 +76,8 @@ export interface Level {
   fire?: boolean;
   // How hard the kitchen is, from 1 to 5, shown as dots in the kitchen picker.
   difficulty: number;
+  // Id of the theme this kitchen belongs to, which decides its surroundings and where it sits in the picker.
+  theme: string;
 }
 
 // Rules a kitchen adds on top of plain cooking.
@@ -81,6 +85,7 @@ export interface LevelRules {
   plates?: number;
   fire?: boolean;
   difficulty?: number;
+  theme?: string;
 }
 
 // One character per tile; S is a floor tile that also marks a spawn point.
@@ -91,6 +96,12 @@ const LEGEND: Record<string, Tile> = {
   T: { kind: "crate", dispenses: "tomato" },
   L: { kind: "crate", dispenses: "lettuce" },
   N: { kind: "crate", dispenses: "onion" },
+  A: { kind: "crate", dispenses: "seaweed" },
+  C: { kind: "crate", dispenses: "clam" },
+  H: { kind: "crate", dispenses: "fish" },
+  U: { kind: "crate", dispenses: "bun" },
+  M: { kind: "crate", dispenses: "meat" },
+  G: { kind: "grill" },
   X: { kind: "trash" },
   B: { kind: "board" },
   O: { kind: "stove" },
@@ -113,7 +124,7 @@ export function parseLevel(
   rules: LevelRules = {},
 ): Level {
   const width = rows[0].length;
-  const level: Level = { name, width, height: rows.length, tiles: [], spawns: [], target, recipes, decor, difficulty: 1, ...rules };
+  const level: Level = { name, width, height: rows.length, tiles: [], spawns: [], target, recipes, decor, difficulty: 1, theme: "town", ...rules };
   rows.forEach((row, tz) => {
     if (row.length !== width) throw new Error(`Level row ${tz} has the wrong width`);
     [...row].forEach((char, tx) => {
@@ -137,7 +148,7 @@ export const isFixture = (tile: Tile): boolean => tile.kind === "sink" || tile.k
 
 // Only these tiles can have an item resting on them.
 export const holdsItems = (tile: Tile): boolean =>
-  tile.kind === "counter" || tile.kind === "board" || tile.kind === "stove";
+  tile.kind === "counter" || tile.kind === "board" || tile.kind === "stove" || tile.kind === "grill";
 
 // Fire only takes hold of worktops; crates, sinks and the serving window never burn.
 export const burns = holdsItems;
@@ -357,7 +368,7 @@ export const LEVELS: Level[] = [
   parseLevel(
     "Full House",
     420,
-    ["lettuce_salad", "salad", "soup", "onion_soup"],
+    ["salad", "soup", "onion_soup", "burger"],
     {
       sink: "sink_industrial",
       fridge: "fridge_retro",
@@ -392,9 +403,9 @@ export const LEVELS: Level[] = [
       },
     },
     [
-      "VTLN###OOO#PV",
+      "VTLNUM#OOO#PV",
       "#S....#....S#",
-      "#...........X",
+      "G...........X",
       "#.....#.....#",
       "###.#####.###",
       "#.....#.....W",
@@ -408,7 +419,7 @@ export const LEVELS: Level[] = [
   parseLevel(
     "Round Trip",
     400,
-    ["lettuce_salad", "salad", "soup", "onion_soup"],
+    ["salad", "soup", "onion_soup", "burger"],
     {
       sink: "sink_farmhouse",
       fridge: "fridge_pro",
@@ -442,10 +453,10 @@ export const LEVELS: Level[] = [
       },
     },
     [
-      "V#T#L#N###P#V",
+      "V#T#L#NUM#P#V",
       "#S.........S#",
       "#...........#",
-      "#.#OOO#####.#",
+      "#.#OOO##GG#.#",
       "R.#VVVVVVV#.W",
       "#.#BB#Q####.W",
       "#...........#",
@@ -454,4 +465,67 @@ export const LEVELS: Level[] = [
     ],
     { plates: 4, fire: true, difficulty: 5 },
   ),
+  // Deep Sea Diner opens gently: one open room with two small islands to walk round.
+  parseLevel(
+    "Coral Cove",
+    320,
+    ["seaweed_salad", "clam_chowder", "soup"],
+    { sink: "sink_single", fridge: "fridge_retro", plants: ["plant_succulent", "plant_lime"] },
+    [
+      "V#T#A#CP###KV",
+      "#S.........S#",
+      "B...........O",
+      "B..##...##..O",
+      "#..##...##..#",
+      "#...........#",
+      "#...........W",
+      "#S.........SW",
+      "V##X########V",
+    ],
+    { theme: "sea", difficulty: 1 },
+  ),
+  // Two halves joined by one doorway, short counters to weave between, and four plates to keep washing at the shared sink.
+  parseLevel(
+    "Kelp Maze",
+    360,
+    ["seaweed_salad", "clam_chowder", "grilled_fish"],
+    { sink: "sink_industrial", fridge: "fridge_pro", plants: ["plant_tropical", "plant_bamboo"] },
+    [
+      "VTAH#C#OOP##V",
+      "#S....#....S#",
+      "#.##..#..##.#",
+      "B.....#.....W",
+      "B..#.....#..W",
+      "G.....#.....G",
+      "#.##..Q..##.#",
+      "#S....#....SR",
+      "V###X#######V",
+    ],
+    { theme: "sea", plates: 4, difficulty: 3 },
+  ),
 ];
+
+// Kitchens are grouped into themes; each theme is played through on its own, starting from its first kitchen.
+export interface Theme {
+  id: string;
+  name: string;
+  blurb: string;
+}
+
+export const THEMES: Theme[] = [
+  { id: "town", name: "Town Bistro", blurb: "A restaurant on a busy street" },
+  { id: "sea", name: "Deep Sea Diner", blurb: "A kitchen on the sea floor" },
+];
+
+// Indices into LEVELS of one theme's kitchens, in play order.
+export const themeLevels = (theme: string): number[] =>
+  LEVELS.flatMap((level, index) => (level.theme === theme ? [index] : []));
+
+// A kitchen's number within its own theme, counting from 1.
+export const levelNumber = (index: number): number => themeLevels(LEVELS[index].theme).indexOf(index) + 1;
+
+// The kitchen that follows this one in its theme, wrapping back to the theme's first.
+export function nextLevel(index: number): number {
+  const mates = themeLevels(LEVELS[index].theme);
+  return mates[(mates.indexOf(index) + 1) % mates.length];
+}

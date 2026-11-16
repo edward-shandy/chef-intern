@@ -25,6 +25,7 @@ import {
   type ProgressBar,
 } from "./models";
 import { animateChef, createChef, type ChefRig } from "./chef";
+import { animateSea, SEA_WATER } from "./sea";
 import { animateFire, animateSpray, createFire, createSpray, type FireView } from "./fire";
 import { SPRAY_RANGE } from "../shared/sim";
 
@@ -96,9 +97,20 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
   renderer.toneMappingExposure = 0.92;
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(COLORS.background);
+  const backdrop = new THREE.Color(COLORS.background);
+  scene.background = backdrop;
   const fog = new THREE.Fog(COLORS.background, 30, 60);
   scene.fog = fog;
+  // Under the sea the distance fades into water instead of into the dark.
+  const applyTheme = () => {
+    backdrop.setHex(level.theme === "sea" ? SEA_WATER : COLORS.background);
+    fog.color.copy(backdrop);
+    // Cooler light and nearer fog make the sea floor read as under water.
+    const sea = level.theme === "sea";
+    sky.color.setHex(sea ? 0xc4f1ff : 0xffeedd);
+    sky.groundColor.setHex(sea ? 0x2a7f9a : 0x4a3a5c);
+    key.color.setHex(sea ? 0xe2fbff : 0xfff0d8);
+  };
 
   // A generated studio environment gives worktops and pots soft reflections without any image files.
   const pmrem = new THREE.PMREMGenerator(renderer);
@@ -111,7 +123,8 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
   camera.lookAt(CAMERA_TARGET);
 
   // Warm key light from the front-left, a cool fill from the back-right, and a soft sky bounce.
-  scene.add(new THREE.HemisphereLight(0xffeedd, 0x4a3a5c, 0.38));
+  const sky = new THREE.HemisphereLight(0xffeedd, 0x4a3a5c, 0.38);
+  scene.add(sky);
   const key = new THREE.DirectionalLight(0xfff0d8, 2.9);
   key.position.set(-5, 13, 7);
   key.castShadow = true;
@@ -128,6 +141,7 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
   const fill = new THREE.DirectionalLight(0xbfd4ff, 0.4);
   fill.position.set(7, 6, -4);
   scene.add(key, fill);
+  applyTheme();
 
   // Everything under this group uses simulation coordinates directly.
   const world = new THREE.Group();
@@ -185,6 +199,8 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
     washBar?.group.removeFromParent();
     washBar = null;
     level = next;
+    applyTheme();
+    resize();
     stations = createStations(level);
     room = createRoom(level, anisotropy);
     world.position.set(-level.width / 2, 0, -level.height / 2);
@@ -246,7 +262,7 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
       }
 
       // Pots get a badge (fill count, READY!, BURNT) and steam while they are hot.
-      const onHob = level.tiles[index].kind === "stove";
+      const onHob = level.tiles[index].kind === "stove" || level.tiles[index].kind === "grill";
       const status = item ? potStatus(item, onHob) : null;
       let fx = potFx.get(index);
       if (status && !fx) {
@@ -266,7 +282,7 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
         if (status && fx.steam.visible) animateSteam(fx.steam, time, status.steam === "dark");
       }
       // Flames flicker under a cooking pot and its soup bubbles.
-      const cooking = Boolean(status?.cooking) && level.tiles[index].kind === "stove";
+      const cooking = Boolean(status?.cooking) && onHob;
       const fire = stations.flames.get(index);
       if (fire) {
         fire.visible = cooking;
@@ -438,8 +454,9 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
     camera.updateProjectionMatrix();
     // Fog starts behind the kitchen wherever the camera ends up, so only the far ground fades out.
     const distance = camera.position.length();
-    fog.near = distance + 8;
-    fog.far = distance + 40;
+    const sea = level.theme === "sea";
+    fog.near = distance + (sea ? 3 : 8);
+    fog.far = distance + (sea ? 24 : 40);
   };
   window.addEventListener("resize", resize);
   resize();
@@ -472,6 +489,7 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
         cheer = Math.max(0, cheer - dt / 1.2);
         animateGuests(room, time, cheer);
         animateStreet(room, time);
+        animateSea(room, time);
         for (const object of popping) {
           const scale = object.scale.x + (1 - object.scale.x) * (1 - Math.exp(-20 * dt));
           object.scale.setScalar(scale);

@@ -122,7 +122,7 @@ function turned(object: THREE.Mesh, x: number, y: number, z: number): THREE.Mesh
 }
 
 // Merges every mesh under an object into one mesh per material, so a detailed prop costs only a few draw calls.
-function bake(source: THREE.Object3D): THREE.Group {
+export function bake(source: THREE.Object3D): THREE.Group {
   source.updateMatrixWorld(true);
   const parts = new Map<THREE.Material, THREE.BufferGeometry[]>();
   source.traverse((child) => {

@@ -4,6 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Chef Intern</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="theme-color" content="#1f1929" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;900&display=swap" rel="stylesheet" />
@@ -42,6 +44,8 @@
           <button id="leave-lobby" class="button button-quiet" type="button">Back to the front door</button>
         </div>
         <div class="lobby-main">
+          <p class="lobby-kicker">Choose a theme</p>
+          <div id="themes" class="theme-row" role="group" aria-label="Theme"></div>
           <div class="lobby-head">
             <p class="lobby-kicker">Choose a kitchen</p>
             <span id="level-count" class="lobby-count"></span>
