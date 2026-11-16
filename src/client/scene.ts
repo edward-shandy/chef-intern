@@ -3,6 +3,7 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { isFixture, type Level } from "../shared/level";
 import type { GameState, Item } from "../shared/sim";
 import {
+  animateBelts,
   animateGuests,
   animateStreet,
   animateSteam,
@@ -16,6 +17,7 @@ import {
   createStations,
   createSteam,
   createTargetMarker,
+  heats,
   itemProgress,
   itemSignature,
   labelTexture,
@@ -24,10 +26,12 @@ import {
   WORKTOP_Y,
   type ProgressBar,
 } from "./models";
-import { animateChef, createChef, type ChefRig } from "./chef";
 import { animateSea, SEA_WATER } from "./sea";
+import { animateChef, createChef, type ChefRig } from "./chef";
 import { animateFire, animateSpray, createFire, createSpray, type FireView } from "./fire";
-import { SPRAY_RANGE } from "../shared/sim";
+import { createDashFx } from "./dash";
+import { BELT_SECONDS, beltMoves, SPRAY_RANGE } from "../shared/sim";
+import { getZoom, onZoom } from "./settings";
 
 const EMPTY_STATE = {
   players: [],
@@ -49,11 +53,15 @@ const DEBUG_ZOOM = Math.max(1, Number(new URLSearchParams(location.search).get("
 interface ItemView {
   signature: string;
   mesh: THREE.Group;
+  // Set while a belt carries the item over from a neighbouring tile: where it came from and when it set off.
+  glide?: { x: number; z: number; at: number };
 }
 
 interface ChefView {
   rig: ChefRig;
   isLocal: boolean;
+  // The character the rig was built as, so a change of chef in the lobby rebuilds it.
+  character: string;
   held: ItemView | null;
   spray: THREE.Group;
   // Name floating over the chef, and the text it was drawn for.
@@ -97,20 +105,9 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
   renderer.toneMappingExposure = 0.92;
 
   const scene = new THREE.Scene();
-  const backdrop = new THREE.Color(COLORS.background);
-  scene.background = backdrop;
+  scene.background = new THREE.Color(COLORS.background);
   const fog = new THREE.Fog(COLORS.background, 30, 60);
   scene.fog = fog;
-  // Under the sea the distance fades into water instead of into the dark.
-  const applyTheme = () => {
-    backdrop.setHex(level.theme === "sea" ? SEA_WATER : COLORS.background);
-    fog.color.copy(backdrop);
-    // Cooler light and nearer fog make the sea floor read as under water.
-    const sea = level.theme === "sea";
-    sky.color.setHex(sea ? 0xc4f1ff : 0xffeedd);
-    sky.groundColor.setHex(sea ? 0x2a7f9a : 0x4a3a5c);
-    key.color.setHex(sea ? 0xe2fbff : 0xfff0d8);
-  };
 
   // A generated studio environment gives worktops and pots soft reflections without any image files.
   const pmrem = new THREE.PMREMGenerator(renderer);
@@ -123,8 +120,8 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
   camera.lookAt(CAMERA_TARGET);
 
   // Warm key light from the front-left, a cool fill from the back-right, and a soft sky bounce.
-  const sky = new THREE.HemisphereLight(0xffeedd, 0x4a3a5c, 0.38);
-  scene.add(sky);
+  const hemi = new THREE.HemisphereLight(0xffeedd, 0x4a3a5c, 0.38);
+  scene.add(hemi);
   const key = new THREE.DirectionalLight(0xfff0d8, 2.9);
   key.position.set(-5, 13, 7);
   key.castShadow = true;
@@ -141,7 +138,6 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
   const fill = new THREE.DirectionalLight(0xbfd4ff, 0.4);
   fill.position.set(7, 6, -4);
   scene.add(key, fill);
-  applyTheme();
 
   // Everything under this group uses simulation coordinates directly.
   const world = new THREE.Group();
@@ -183,6 +179,14 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
   let lastDelivered = 0;
   // Counts down from 1 after a delivery, while the guests celebrate.
   let cheer = 0;
+  // What lay where when the belts last moved, so the next move can be replayed as a glide.
+  let beltSteps: number | null = null;
+  let beltItems: Record<number, Item> = {};
+  const suds = createSuds();
+  world.add(suds);
+  const dashFx = createDashFx(world);
+  // Night kitchens dim the daylight; these are the daytime values to return to.
+  const daylight = { hemi: 0.38, key: 2.9, fill: 0.4, exposure: 0.92, env: 0.22 };
 
   // Tears down everything tied to the old layout and builds the new kitchen in its place.
   const setLevel = (next: Level) => {
@@ -199,12 +203,37 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
     washBar?.group.removeFromParent();
     washBar = null;
     level = next;
-    applyTheme();
-    resize();
     stations = createStations(level);
     room = createRoom(level, anisotropy);
     world.position.set(-level.width / 2, 0, -level.height / 2);
     world.add(room, stations.group);
+    beltSteps = null;
+    applyMood();
+  };
+
+  // Evening kitchens trade the sun for a deep blue sky, so the lanterns and the grill embers carry the light.
+  const applyMood = () => {
+    const night = Boolean(level.decor.room?.night);
+    hemi.intensity = night ? 0.2 : daylight.hemi;
+    hemi.color.setHex(night ? 0x9fb4ff : 0xffeedd);
+    key.intensity = night ? 1.25 : daylight.key;
+    key.color.setHex(night ? 0xb8c8ff : 0xfff0d8);
+    fill.intensity = night ? 0.5 : daylight.fill;
+    fill.color.setHex(night ? 0x6a7cff : 0xbfd4ff);
+    scene.environmentIntensity = night ? 0.12 : daylight.env;
+    renderer.toneMappingExposure = night ? 1.05 : daylight.exposure;
+    const sky = night ? 0x141a33 : COLORS.background;
+    (scene.background as THREE.Color).setHex(sky);
+    fog.color.setHex(sky);
+    // Under the sea the distance fades into blue water and the light turns cool.
+    const sea = level.theme === "sea";
+    hemi.groundColor.setHex(sea ? 0x2a7f9a : 0x4a3a5c);
+    if (sea) {
+      (scene.background as THREE.Color).setHex(SEA_WATER);
+      fog.color.setHex(SEA_WATER);
+      hemi.color.setHex(0xc4f1ff);
+      key.color.setHex(0xe2fbff);
+    }
   };
 
   const tileCentre = (index: number) => ({ x: (index % level.width) + 0.5, z: Math.floor(index / level.width) + 0.5 });
@@ -242,36 +271,71 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
       washBar.fill.material.color.setHex(0x5fb8e8);
       world.add(washBar.group);
     }
+    // Soap suds froth up over the basin while somebody scrubs.
+    const scrubbing = state.players.some((player) => player.washing);
+    const { x, z } = tileCentre(stations.washTile);
+    suds.position.set(x, WORKTOP_Y + 0.12, z);
+    suds.userData.target = scrubbing ? 1 : 0;
     washBar.group.visible = state.wash.progress > 0;
     washBar.fill.scale.x = Math.max(0.001, state.wash.progress);
     washBar.fill.position.x = (-BAR_WIDTH * (1 - state.wash.progress)) / 2;
   };
 
+  // When the belts have moved since the last frame, each carried mesh follows its item to the next tile.
+  const followBelts = (state: GameState, time: number) => {
+    const steps = state.beltSteps ?? 0;
+    if (beltSteps !== null && steps === beltSteps + 1) {
+      const carried: Array<[number, ItemView]> = [];
+      for (const [from, to] of beltMoves(level, beltItems)) {
+        const view = resting.get(from);
+        if (!view) continue;
+        resting.delete(from);
+        view.glide = { ...tileCentre(from), at: time };
+        carried.push([to, view]);
+      }
+      for (const [to, view] of carried) {
+        const left = resting.get(to);
+        if (left) left.mesh.removeFromParent();
+        resting.set(to, view);
+      }
+    }
+    beltSteps = steps;
+    beltItems = { ...state.tileItems };
+  };
+
   const syncRestingItems = (state: GameState, time: number) => {
+    followBelts(state, time);
     const indices = new Set([...resting.keys(), ...potFx.keys(), ...Object.keys(state.tileItems).map(Number)]);
     for (const index of indices) {
       const item = state.tileItems[index] ?? null;
       const view = syncItem(resting.get(index) ?? null, item, world);
-      const { x, z } = tileCentre(index);
+      let { x, z } = tileCentre(index);
       const y = restHeight(index);
       if (view) {
+        // A carried item slides across from the tile it left, at the belt's own pace.
+        if (view.glide) {
+          const t = Math.min(1, (time - view.glide.at) / BELT_SECONDS);
+          x = view.glide.x + (x - view.glide.x) * t;
+          z = view.glide.z + (z - view.glide.z) * t;
+          if (t >= 1) view.glide = undefined;
+        }
         view.mesh.position.set(x, y, z);
         resting.set(index, view);
       } else {
         resting.delete(index);
       }
 
-      // Pots get a badge (fill count, READY!, BURNT) and steam while they are hot.
-      const onHob = level.tiles[index].kind === "stove" || level.tiles[index].kind === "grill";
+      // Pots and grilling chickens get a badge (fill count, READY!, BURNT) and steam while they are hot.
+      const onHob = heats(level.tiles[index].kind);
       const status = item ? potStatus(item, onHob) : null;
       let fx = potFx.get(index);
       if (status && !fx) {
         fx = { badge: createLabel(""), steam: createSteam() };
         fx.badge.scale.set(1.05, 0.33, 1);
-        fx.steam.position.set(x, y, z);
         world.add(fx.badge, fx.steam);
         potFx.set(index, fx);
       }
+      fx?.steam.position.set(x, y, z);
       if (fx) {
         fx.badge.visible = Boolean(status?.badge);
         fx.steam.visible = Boolean(status && status.steam !== "none");
@@ -281,7 +345,7 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
         }
         if (status && fx.steam.visible) animateSteam(fx.steam, time, status.steam === "dark");
       }
-      // Flames flicker under a cooking pot and its soup bubbles.
+      // Flames flicker under a cooking pot or a roasting chicken, and soup bubbles.
       const cooking = Boolean(status?.cooking) && onHob;
       const fire = stations.flames.get(index);
       if (fire) {
@@ -299,11 +363,11 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
       let bar = bars.get(index);
       if (progress && !bar) {
         bar = createProgressBar();
-        bar.group.position.set(x, y + 0.75, z);
         world.add(bar.group);
         bars.set(index, bar);
       }
       if (!bar) continue;
+      bar.group.position.set(x, y + 0.75, z);
       bar.group.visible = progress !== null;
       if (progress) {
         bar.fill.scale.x = Math.max(0.001, progress.value);
@@ -353,14 +417,15 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
     for (const [id, view] of chefs) {
       const player = state.players.find((other) => other.id === id);
       // A rig built before we knew our own seat is rebuilt so the right chef gets the bright ring.
-      if (!player || view.isLocal !== (id === localId)) removeChef(id, view);
+      if (!player || view.isLocal !== (id === localId) || view.character !== player.character) removeChef(id, view);
     }
 
     for (const player of state.players) {
       let view = chefs.get(player.id);
       if (!view) {
         const isLocal = player.id === localId;
-        view = { rig: createChef(player.id, isLocal), isLocal, held: null, spray: createSpray(), tag: null, tagText: "" };
+        const character = player.character;
+        view = { rig: createChef(player.id, isLocal, character), isLocal, character, held: null, spray: createSpray(), tag: null, tagText: "" };
         view.rig.group.add(view.spray);
         view.rig.group.rotation.y = player.facing;
         world.add(view.rig.group);
@@ -447,19 +512,59 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
     const squeeze = 1 - Math.min(1, clientHeight / 460);
     // Wide windows keep the dining room in view; an upright phone gives that up so the kitchen itself is larger.
     const fit = 1.6 - 0.3 * Math.min(1, Math.max(0, (1 - camera.aspect) / 0.44));
-    camera.position.copy(CAMERA_HOME).multiplyScalar((Math.max(1, fit / camera.aspect) * (1 + squeeze * 0.35)) / DEBUG_ZOOM);
-    camera.lookAt(CAMERA_TARGET);
+    framing = (Math.max(1, fit / camera.aspect) * (1 + squeeze * 0.35)) / DEBUG_ZOOM;
     if (squeeze > 0) camera.setViewOffset(clientWidth, clientHeight, 0, -squeeze * 0.36 * clientHeight, clientWidth, clientHeight);
     else camera.clearViewOffset();
     camera.updateProjectionMatrix();
+    placeCamera();
+  };
+
+  // How far back the camera sits to frame the whole kitchen on this screen, before the player's own zoom.
+  let framing = 1;
+  // The point the camera centres on: the kitchen's middle, drifting towards the local chef as the player zooms in,
+  // so a close-up view keeps them in shot. It eases along rather than snapping to every step.
+  const focus = new THREE.Vector3();
+  const wantedFocus = new THREE.Vector3();
+  const placeCamera = () => {
+    camera.position.copy(CAMERA_HOME).multiplyScalar(framing / getZoom()).add(focus);
+    camera.lookAt(CAMERA_TARGET.x + focus.x, CAMERA_TARGET.y, CAMERA_TARGET.z + focus.z);
     // Fog starts behind the kitchen wherever the camera ends up, so only the far ground fades out.
-    const distance = camera.position.length();
+    const distance = camera.position.distanceTo(focus);
     const sea = level.theme === "sea";
     fog.near = distance + (sea ? 3 : 8);
     fog.far = distance + (sea ? 24 : 40);
   };
-  window.addEventListener("resize", resize);
-  resize();
+  const followChef = (state: GameState, localId: number | null, dt: number) => {
+    const zoom = getZoom();
+    const me = state.players.find((player) => player.id === localId);
+    // Fully on the chef from about 1.5x; at 1x and below the whole kitchen stays centred.
+    const follow = me ? Math.min(1, Math.max(0, (zoom - 1) / 0.5)) : 0;
+    const halfW = level.width / 2;
+    const halfH = level.height / 2;
+    wantedFocus.set(
+      Math.max(-halfW, Math.min(halfW, (me?.x ?? halfW) - halfW)) * follow,
+      0,
+      Math.max(-halfH, Math.min(halfH, (me?.z ?? halfH) - halfH)) * follow,
+    );
+    focus.lerp(wantedFocus, 1 - Math.exp(-5 * dt));
+    placeCamera();
+  };
+  onZoom(() => placeCamera());
+  // The canvas is measured after layout rather than on the window's resize event: iOS fires that event mid-rotation,
+  // before the page has its new size, which left the old drawing buffer stretched over the new shape (a squashed kitchen).
+  let measured = "";
+  const fit = () => {
+    const size = `${canvas.clientWidth}x${canvas.clientHeight}`;
+    if (size === measured || canvas.clientWidth === 0 || canvas.clientHeight === 0) return;
+    measured = size;
+    resize();
+  };
+  new ResizeObserver(fit).observe(canvas);
+  window.addEventListener("resize", fit);
+  // Belt and braces for rotations whose last layout change reports no resize at all.
+  window.addEventListener("orientationchange", () => [100, 400, 900].forEach((ms) => setTimeout(fit, ms)));
+  fit();
+  applyMood();
 
   return {
     setLevel,
@@ -482,8 +587,12 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
         const shown = state ?? EMPTY_STATE;
         syncRestingItems(shown, time);
         syncDishes(shown);
+        animateSuds(suds, time, dt);
+        animateBelts(stations, dt);
         syncFires(shown, time);
         syncChefs(shown, localId, dt, time);
+        followChef(shown, localId, dt);
+        dashFx.update(shown.players, dt);
         syncMarkers(target, pointed, time);
         if (state) syncPopups(state, dt);
         cheer = Math.max(0, cheer - dt / 1.2);
@@ -499,4 +608,40 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
       });
     },
   };
+}
+
+// A froth of soap bubbles over the wash basin; each bubble swells, rises a little and pops in a loop.
+function createSuds(): THREE.Group {
+  const suds = new THREE.Group();
+  const material = new THREE.MeshStandardMaterial({
+    color: 0xf2fbff,
+    roughness: 0.15,
+    metalness: 0.1,
+    transparent: true,
+    opacity: 0.85,
+    envMapIntensity: 1.5,
+  });
+  for (let i = 0; i < 14; i++) {
+    const bubble = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 8), material);
+    bubble.userData.seed = i;
+    suds.add(bubble);
+  }
+  suds.userData.amount = 0;
+  suds.userData.target = 0;
+  suds.visible = false;
+  return suds;
+}
+
+function animateSuds(suds: THREE.Group, time: number, dt: number): void {
+  const amount = (suds.userData.amount as number) + ((suds.userData.target as number) - (suds.userData.amount as number)) * (1 - Math.exp(-6 * dt));
+  suds.userData.amount = amount;
+  suds.visible = amount > 0.02;
+  if (!suds.visible) return;
+  suds.children.forEach((bubble, i) => {
+    const phase = (time * 0.9 + i * 0.137) % 1;
+    const angle = i * 2.39;
+    const reach = 0.08 + (i % 4) * 0.07;
+    bubble.position.set(Math.cos(angle) * reach, phase * 0.35, Math.sin(angle) * reach * 0.8);
+    bubble.scale.setScalar(amount * (0.5 + Math.sin(phase * Math.PI) * (0.6 + (i % 3) * 0.3)));
+  });
 }

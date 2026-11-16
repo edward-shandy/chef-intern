@@ -2,7 +2,13 @@ import { MAX_PLAYERS, ROOM_CODE_PATTERN } from "../shared/constants";
 import { LEVELS } from "../shared/level";
 import { inReach, targetTile, type GameState, type PlayerInput } from "../shared/sim";
 import { loadModels, loadProps } from "./assets";
-import { loadChefs } from "./chef";
+import { CHEF_PROPS, loadChefs } from "./chef";
+import { isCharacter } from "../shared/characters";
+import { createChefPicker } from "./lobbySteps";
+import { renderPortraits } from "./portraits";
+import { wireFullscreen } from "./fullscreen";
+import { preventPageZoom, wireCanvasZoom, wireMenu } from "./settings";
+import { createGuide } from "./guide";
 import { createHud } from "./hud";
 import { createKeyboard } from "./input";
 import { connectRoom, type ConnectionState } from "./net";
@@ -24,10 +30,8 @@ function wireAudioButtons(): void {
   const mute = element("#mute");
   const music = element("#music");
   const render = () => {
-    mute.textContent = sound.muted ? "Sound off" : "Sound on";
-    mute.setAttribute("aria-pressed", String(sound.muted));
-    music.textContent = sound.musicOn ? "Music on" : "Music off";
-    music.setAttribute("aria-pressed", String(!sound.musicOn));
+    mute.setAttribute("aria-checked", String(!sound.muted));
+    music.setAttribute("aria-checked", String(sound.musicOn));
   };
   mute.addEventListener("click", () => {
     sound.toggleMute();
@@ -92,6 +96,9 @@ function playRoom(roomCode: string): void {
   // The kitchen changes between rounds, so the layout is always read from the latest snapshot.
   const currentLevel = () => LEVELS[world.latest?.level ?? 0];
   const hud = createHud((level) => room.send({ type: "level", level }));
+  // Each kitchen's briefing pops up in its lobby, and the Guide button brings it back at any time.
+  const guide = createGuide(() => room.send({ type: "ready" }));
+  element("#guide-button").hidden = false;
   element("#room-code").textContent = roomCode;
   element("#leave").addEventListener("click", leaveRoom);
   element("#leave-lobby").addEventListener("click", leaveRoom);
@@ -140,6 +147,7 @@ function playRoom(roomCode: string): void {
       if (message.type === "welcome") {
         world.welcome(message.id, now);
         if (nameInput.value.trim()) room.send({ type: "name", name: nameInput.value });
+        if (savedCharacter) room.send({ type: "character", character: savedCharacter });
         // Forces whatever is held down right now to be sent again under the new session.
         Object.assign(sent, { moveX: 0, moveZ: 0, use: false, aim: null, dash: false });
       } else if (message.type === "pong") {
@@ -149,6 +157,8 @@ function playRoom(roomCode: string): void {
         const countChanged = message.players.length !== world.latest?.players.length;
         world.onSnapshot(message, message.acks, now);
         hud.update(message, world.localId);
+        guide.update(message, world.localId);
+        picker.update(message, world.localId);
         sound.update(message, world.localId);
         if (countChanged) renderStatus();
       }
@@ -164,6 +174,23 @@ function playRoom(roomCode: string): void {
     if (world.latest?.phase === "waiting") room.send({ type: "start" });
   };
   element("#start").addEventListener("click", start);
+  // Each player's chef is remembered on this device, like the name, and sent again whenever the seat is taken.
+  let savedCharacter: string | null = null;
+  try {
+    const stored = localStorage.getItem("chef-intern-character");
+    savedCharacter = isCharacter(stored) ? stored : null;
+  } catch {
+    // Without storage the seat's own chef is used.
+  }
+  const picker = createChefPicker((character) => {
+    savedCharacter = character;
+    room.send({ type: "character", character });
+    try {
+      localStorage.setItem("chef-intern-character", character);
+    } catch {
+      // The pick still holds for this visit.
+    }
+  }, start);
   window.addEventListener("keydown", (event) => {
     // Enter in the name box only confirms the name.
     if (event.target === nameInput) {
@@ -187,6 +214,8 @@ function playRoom(roomCode: string): void {
     const touch = wantsTouchControls() ? createTouchControls() : null;
     const canvas = element<HTMLCanvasElement>("#game");
     const view = createKitchenView(canvas, currentLevel());
+    wireCanvasZoom(canvas);
+    menu.showZoom();
 
     // The pointer only ever picks stations; walking is keyboard or stick only.
     const pointer = { tile: null as number | null, movedAt: 0, chopping: false };
@@ -253,6 +282,10 @@ function playRoom(roomCode: string): void {
       view.setLevel(currentLevel());
       const me = localPlayer();
       const target = me && shown?.phase !== "over" ? targetTile(currentLevel(), me, aim) : null;
+      // The touch hold button says what holding it will do: spray with the extinguisher in hand, scrub at the sink, else chop.
+      touch?.setHoldAction(
+        me?.held?.type === "extinguisher" ? "spray" : target !== null && currentLevel().tiles[target].kind === "wash" ? "wash" : "chop",
+      );
       canvas.style.cursor = aim === null ? "default" : "pointer";
       // A pointed-at station that is not the active target is out of reach, and gets its own outline.
       return { state: shown, localId: world.localId, target, pointed: pointer.tile === target ? null : pointer.tile };
@@ -277,13 +310,19 @@ function playRoom(roomCode: string): void {
         ]
       : []),
   ]).filter(Boolean);
-  Promise.all([loadModels(), loadChefs(), loadProps([...new Set(decorNames)])]).then(startGame, (error) => {
+  Promise.all([loadModels(), loadChefs(), loadProps([...new Set([...decorNames, ...CHEF_PROPS])])]).then(() => {
+    startGame();
+    renderPortraits();
+  }, (error) => {
     status.dataset.state = "offline";
     status.textContent = "Could not load the kitchen";
     console.error(error);
   });
 }
 
+preventPageZoom();
+const menu = wireMenu();
 wireAudioButtons();
+wireFullscreen();
 if (ROOM_CODE_PATTERN.test(requested)) playRoom(requested);
 else showLobby();

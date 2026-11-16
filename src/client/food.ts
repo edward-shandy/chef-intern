@@ -183,18 +183,3 @@ export function createCrate(kind: Ingredient): THREE.Group {
   });
   return shadowed(group);
 }
-
-// A charcoal grill top that sits on a counter: a dark firebox, glowing coals and a steel grate.
-export function createGrillTop(): { group: THREE.Group; coals: THREE.Group } {
-  const group = new THREE.Group();
-  const steel = mat(0x3a3d47, 0.45, 0.6);
-  group.add(mesh(rounded(0.86, 0.06, 0.86, 0.02), mat(0x25252c, 0.6), 0, 0.03, 0));
-  for (let i = -3; i <= 3; i++) group.add(mesh(box(0.74, 0.014, 0.022), mat(0xb9c0cc, 0.3, 0.8), 0, 0.075, i * 0.1));
-  for (const x of [-0.37, 0.37]) group.add(mesh(box(0.03, 0.03, 0.72), steel, x, 0.075, 0));
-  group.add(mesh(box(0.2, 0.03, 0.05), steel, 0, 0.05, 0.45));
-  const coals = new THREE.Group();
-  const glow = new THREE.MeshBasicMaterial({ color: 0xff7a2a });
-  for (let i = 0; i < 9; i++) coals.add(mesh(new THREE.IcosahedronGeometry(0.05, 0), glow, -0.25 + (i % 3) * 0.25, 0.06, -0.25 + Math.floor(i / 3) * 0.25));
-  coals.visible = false;
-  return { group: shadowed(group), coals };
-}

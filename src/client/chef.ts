@@ -1,12 +1,41 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { clone } from "three/addons/utils/SkeletonUtils.js";
+import { seatCharacter } from "../shared/characters";
 import { playerSpeedFraction, type PlayerState } from "../shared/sim";
-import { model, MODEL_SCALE } from "./assets";
+import { decoration, model, MODEL_SCALE } from "./assets";
 import { COLORS, mat, mesh } from "./models";
 
-// KayKit Adventurers characters (CC0), trimmed by scripts/trim_character.py; one per seat.
+// KayKit Adventurers characters (CC0), trimmed by scripts/trim_character.py; each seat starts as one of them.
 const CHARACTERS = ["knight", "barbarian", "mage", "rogue"];
+
+// The animal chefs borrow an adventurer's rig and animations: its head is swapped for the animal's own, a tail is
+// hung on the hips, and the body is repainted as a white chef's jacket with furry arms and dark trousers.
+interface AnimalLook {
+  base: (typeof CHARACTERS)[number];
+  // Colour of the arms: fur for the animals, satin gloves for Icy.
+  fur: number;
+  jacket?: number;
+  trousers?: number;
+  // What hangs on the hips, if not the animal's tail.
+  hips?: string;
+}
+const ANIMALS: Record<string, AnimalLook> = {
+  mouse: { base: "rogue", fur: 0xa7abb8 },
+  cat: { base: "rogue", fur: 0xf0953a },
+  bear: { base: "barbarian", fur: 0x8a5a3c },
+  frog: { base: "mage", fur: 0x6cc04a, trousers: 0x2f6d3a },
+  penguin: { base: "knight", fur: 0x2a2d38, trousers: 0x2a2d38 },
+  fox: { base: "rogue", fur: 0xe8692a },
+  pig: { base: "barbarian", fur: 0xf4a7b5 },
+  elephant: { base: "barbarian", fur: 0x9aa7c4, trousers: 0x4a4f63 },
+  icy: { base: "rogue", fur: 0xfff4fa, jacket: 0xf7a8c8, trousers: 0xf7a8c8, hips: "skirt_icy" },
+};
+const TAILLESS = new Set(["frog"]);
+
+// Decoration props the animal chefs need, for loading with the kitchen's own.
+const hipsProp = (id: string): string | null => ANIMALS[id]?.hips ?? (TAILLESS.has(id) ? null : `tail_${id}`);
+export const CHEF_PROPS = Object.keys(ANIMALS).flatMap((id) => [`head_${id}`, hipsProp(id) ?? []].flat());
 
 type ClipName = "idle" | "run" | "idleLegs" | "runLegs" | "carry" | "chop";
 const CLIP_NAMES: ClipName[] = ["idle", "run", "idleLegs", "runLegs", "carry", "chop"];
@@ -55,6 +84,15 @@ export interface ChefRig {
   actions: Record<ClipName, THREE.AnimationAction>;
   weights: Record<ClipName, number>;
   knife: THREE.Object3D;
+  // Held while scrubbing plates, in place of the knife.
+  sponge: THREE.Object3D;
+  // Bones the scrubbing motion is layered onto, and how far into that motion the chef is.
+  chest: THREE.Object3D | null;
+  arms: Array<THREE.Object3D | null>;
+  scrub: number;
+  time: number;
+  // The character model itself, which leans forward into a dash.
+  figure: THREE.Object3D;
 }
 
 // A chef's toque, sized in the character pack's units and worn on the head bone.
@@ -86,8 +124,10 @@ function blobTexture(): THREE.CanvasTexture {
   return new THREE.CanvasTexture(canvas);
 }
 
-export function createChef(seat: number, isLocal: boolean): ChefRig {
-  const source = sources[seat % sources.length];
+export function createChef(seat: number, isLocal: boolean, character: string = seatCharacter(seat)): ChefRig {
+  const animal = ANIMALS[character];
+  const human = CHARACTERS.indexOf(animal?.base ?? character);
+  const source = sources[human >= 0 ? human : seat % sources.length];
   const colour = COLORS.shirts[seat % COLORS.shirts.length];
   const group = new THREE.Group();
 
@@ -99,6 +139,7 @@ export function createChef(seat: number, isLocal: boolean): ChefRig {
     // Skinned meshes are culled by their rest pose, which is wrong once they animate.
     child.frustumCulled = false;
   });
+  if (animal) dressAnimal(figure, character, animal);
   const toque = createToque();
   toque.position.y = TOQUE_HEIGHT;
   toque.traverse((child) => (child.castShadow = true));
@@ -106,6 +147,9 @@ export function createChef(seat: number, isLocal: boolean): ChefRig {
   const knife = model("knife");
   knife.visible = false;
   figure.getObjectByName("handslotr")?.add(knife);
+  const sponge = createSponge();
+  sponge.visible = false;
+  figure.getObjectByName("handslotr")?.add(sponge);
   group.add(figure);
 
   // A soft blob grounds the chef, and a coloured ring tells players apart; your own is brighter.
@@ -136,19 +180,71 @@ export function createChef(seat: number, isLocal: boolean): ChefRig {
     weights[name] = name === "idle" ? 1 : 0;
     actions[name].setEffectiveWeight(weights[name]).play();
   }
-  return { group, body: group, mixer, actions, weights, knife };
+  return {
+    group,
+    body: group,
+    mixer,
+    actions,
+    weights,
+    knife,
+    sponge,
+    chest: figure.getObjectByName("chest") ?? null,
+    arms: [figure.getObjectByName("upperarml") ?? null, figure.getObjectByName("upperarmr") ?? null],
+    scrub: 0,
+    time: 0,
+    figure,
+  };
+}
+
+// Swaps the adventurer's head for the animal's, adds its tail and repaints the body as a chef's whites.
+function dressAnimal(figure: THREE.Object3D, id: string, look: AnimalLook): void {
+  const jacket = new THREE.MeshStandardMaterial({ color: look.jacket ?? 0xfbf7ee, roughness: 0.75 });
+  const fur = new THREE.MeshStandardMaterial({ color: look.fur, roughness: 0.8 });
+  const trousers = new THREE.MeshStandardMaterial({ color: look.trousers ?? 0x3a3540, roughness: 0.8 });
+  figure.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) return;
+    if (child.name.endsWith("_Head")) child.visible = false;
+    else if (child.name.endsWith("_Body")) child.material = jacket;
+    else if (child.name.includes("_Arm")) child.material = fur;
+    else if (child.name.includes("_Leg")) child.material = trousers;
+  });
+  const head = decoration(`head_${id}`);
+  if (head) figure.getObjectByName("head")?.add(head);
+  const hips = hipsProp(id);
+  const tail = hips ? decoration(hips) : null;
+  if (tail) figure.getObjectByName("hips")?.add(tail);
+  for (const part of [head, tail]) part?.traverse((child) => (child.castShadow = true));
+}
+
+// A kitchen sponge in the pack's units: yellow foam with a green scouring side, flecked with suds.
+function createSponge(): THREE.Group {
+  const sponge = new THREE.Group();
+  sponge.add(
+    mesh(new THREE.BoxGeometry(0.34, 0.16, 0.24), mat(0xffd84a, 0.9), 0, 0, 0),
+    mesh(new THREE.BoxGeometry(0.34, 0.07, 0.24), mat(0x3f9d57, 0.9), 0, 0.115, 0),
+  );
+  for (let i = 0; i < 4; i++) {
+    sponge.add(mesh(new THREE.SphereGeometry(0.07, 8, 6), mat(0xffffff, 0.2), -0.12 + i * 0.08, -0.08, (i % 2) * 0.08 - 0.04));
+  }
+  sponge.traverse((child) => (child.castShadow = true));
+  return sponge;
 }
 
 // How far above the head bone the toque sits, in the pack's units.
 const TOQUE_HEIGHT = 0.95;
 
-// Mixes the clips for this frame: standing, running, carrying or chopping.
+// Mixes the clips for this frame: standing, running, carrying, chopping or scrubbing at the sink.
 export function animateChef(rig: ChefRig, player: PlayerState, dt: number): void {
   const speed = playerSpeedFraction(player);
   const moving = speed > 0.12;
   const wanted: Partial<Record<ClipName, number>> = {};
+  const washing = Boolean(player.washing);
   if (player.chopping) {
     wanted.chop = 1;
+  } else if (washing) {
+    // Both hands reach forward into the basin, the way they hold a carried dish.
+    wanted.idleLegs = 1;
+    wanted.carry = 1;
   } else if (player.held) {
     wanted[moving ? "runLegs" : "idleLegs"] = 1;
     wanted.carry = 1;
@@ -164,5 +260,28 @@ export function animateChef(rig: ChefRig, player: PlayerState, dt: number): void
   rig.actions.run.timeScale = rig.actions.runLegs.timeScale = 0.6 + speed * 0.7;
   rig.actions.chop.timeScale = 1.6;
   rig.knife.visible = player.chopping;
+  rig.sponge.visible = washing;
   rig.mixer.update(dt);
+
+  // A cartoon dash: the chef pitches forward into it and springs back upright after.
+  const lean = player.dashTime > 0 ? 0.42 : 0;
+  rig.figure.rotation.x += (lean - rig.figure.rotation.x) * (1 - Math.exp(-(lean > 0 ? 30 : 10) * dt));
+  const stretch = 1 + rig.figure.rotation.x * 0.15;
+  rig.figure.scale.set(MODEL_SCALE / Math.sqrt(stretch), MODEL_SCALE * stretch, MODEL_SCALE / Math.sqrt(stretch));
+
+  // Scrubbing is layered on top of the clips: lean over the sink and work the sponge round in circles.
+  rig.time += dt;
+  rig.scrub += ((washing ? 1 : 0) - rig.scrub) * blend;
+  if (rig.scrub < 0.01) return;
+  const circle = rig.time * 11;
+  if (rig.chest) {
+    rig.chest.rotation.x += 0.28 * rig.scrub;
+    rig.chest.rotation.y += Math.sin(circle) * 0.16 * rig.scrub;
+  }
+  rig.arms.forEach((arm, side) => {
+    if (!arm) return;
+    const phase = circle + side * Math.PI;
+    arm.rotation.x += Math.sin(phase) * 0.32 * rig.scrub;
+    arm.rotation.z += Math.cos(phase) * 0.22 * rig.scrub;
+  });
 }

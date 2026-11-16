@@ -2,9 +2,15 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <title>Chef Intern</title>
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Added to a phone's Home Screen, the game opens as a full-screen app with no browser bars. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Chef Intern" />
     <meta name="theme-color" content="#1f1929" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -16,12 +22,48 @@
     <header class="hud">
       <h1>Chef Intern</h1>
       <div class="hud-right">
-        <button id="leave" class="pill-button" type="button">Leave</button>
-        <button id="music" class="pill-button" type="button">Music on</button>
-        <button id="mute" class="pill-button" type="button">Sound on</button>
         <span id="status" data-state="connecting">Connecting…</span>
+        <button id="menu-button" class="pill-button pill-icon" type="button" aria-label="Settings" aria-expanded="false" aria-controls="menu">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path class="menu-bar menu-bar-top" d="M4 7h16" /><path class="menu-bar menu-bar-mid" d="M4 12h16" /><path class="menu-bar menu-bar-low" d="M4 17h16" /></svg>
+        </button>
       </div>
     </header>
+    <!-- Every option lives in one menu, so the header stays down to the room status and this button. -->
+    <section id="menu" class="menu" aria-label="Settings" hidden>
+      <div class="menu-card">
+        <div class="menu-row">
+          <span class="menu-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path d="M16 9a4 4 0 0 1 0 6m2.500-9a8 8 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
+          <span class="menu-label">Sound</span>
+          <button id="mute" class="switch" type="button" role="switch" aria-checked="true" aria-label="Sound"><i></i></button>
+        </div>
+        <div class="menu-row">
+          <span class="menu-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V6l11-2v12" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="6.500" cy="18" r="2.500" fill="currentColor"/><circle cx="17.500" cy="16" r="2.500" fill="currentColor"/></svg></span>
+          <span class="menu-label">Music</span>
+          <button id="music" class="switch" type="button" role="switch" aria-checked="true" aria-label="Music"><i></i></button>
+        </div>
+        <div id="zoom-row" class="menu-row menu-zoom" hidden>
+          <span class="menu-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.500" cy="10.500" r="6" fill="none" stroke="currentColor" stroke-width="2.200"/><path d="m15 15 5 5M8 10.500h5M10.500 8v5" stroke="currentColor" stroke-width="2.200" stroke-linecap="round"/></svg></span>
+          <span class="menu-label">Zoom</span>
+          <div class="zoom-control">
+            <button id="zoom-out" class="zoom-step" type="button" aria-label="Zoom out">−</button>
+            <input id="zoom" type="range" min="0.8" max="2" step="0.05" value="1" aria-label="Zoom" />
+            <button id="zoom-in" class="zoom-step" type="button" aria-label="Zoom in">+</button>
+          </div>
+        </div>
+        <p id="zoom-hint" class="menu-hint" hidden>Pinch the kitchen or scroll to zoom. Close up, the camera follows your chef.</p>
+        <div class="menu-actions">
+          <button id="fullscreen" class="menu-item" type="button" hidden></button>
+          <button id="guide-button" class="menu-item" type="button" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.500C6.500 4 9.500 4 12 6c2.500-2 5.500-2 8-.5V19c-2.500-1.500-5.500-1.500-8 .5-2.500-2-5.500-2-8-.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M12 6v13.500" stroke="currentColor" stroke-width="2"/></svg>
+            <span>Kitchen guide</span>
+          </button>
+          <button id="leave" class="menu-item menu-danger" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h5v16h-5M10 8l-4 4 4 4M6 12h10" fill="none" stroke="currentColor" stroke-width="2.200" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span>Leave kitchen</span>
+          </button>
+        </div>
+      </div>
+    </section>
     <div class="play-hud" hidden>
       <section class="orders" id="orders" aria-label="Orders"></section>
       <div class="stat stat-score">
@@ -30,6 +72,7 @@
         <div class="goal" id="goal"><i></i></div>
       </div>
       <div class="stat stat-timer"><small>Time left</small><b id="timer">15:00</b></div>
+      <p id="ready-banner" class="ready-banner" role="status" hidden></p>
       <p id="fire-alert" class="fire-alert" role="alert" hidden>Fire! Grab the extinguisher and hold <kbd>F</kbd></p>
     </div>
     <section id="waiting" class="lobby" hidden>
@@ -37,20 +80,45 @@
         <div class="lobby-side">
           <p class="lobby-kicker">Kitchen code</p>
           <h2 id="room-code" class="lobby-code"></h2>
-          <input id="chef-name" class="lobby-name" maxlength="12" placeholder="Your name" autocomplete="off" spellcheck="false" aria-label="Your name" />
           <ul id="lobby-chefs" class="lobby-chefs"></ul>
           <button id="start" class="button button-primary" type="button">Start service <kbd>Enter</kbd></button>
           <button id="invite" class="button" type="button">Copy invite link</button>
           <button id="leave-lobby" class="button button-quiet" type="button">Back to the front door</button>
         </div>
         <div class="lobby-main">
-          <p class="lobby-kicker">Choose a theme</p>
-          <div id="themes" class="theme-row" role="group" aria-label="Theme"></div>
-          <div class="lobby-head">
-            <p class="lobby-kicker">Choose a kitchen</p>
-            <span id="level-count" class="lobby-count"></span>
+          <!-- Two steps: the crew picks a kitchen together, then each player picks a chef and a name. -->
+          <div class="lobby-steps" role="tablist" aria-label="Setup">
+            <button type="button" role="tab" data-step="kitchen" aria-selected="true"><b>1</b> Kitchen</button>
+            <button type="button" role="tab" data-step="chef" aria-selected="false"><b>2</b> Your chef</button>
           </div>
-          <div id="levels" class="level-grid" role="group" aria-label="Kitchen"></div>
+          <div class="lobby-step" data-panel="kitchen" role="tabpanel">
+            <p class="lobby-kicker">Choose a theme</p>
+            <div id="themes" class="theme-row" role="group" aria-label="Theme"></div>
+            <div class="lobby-head">
+              <p class="lobby-kicker">Choose a kitchen</p>
+              <span id="level-count" class="lobby-count"></span>
+            </div>
+            <div id="levels" class="level-grid" role="group" aria-label="Kitchen"></div>
+            <button id="to-chef" class="button button-primary lobby-next" type="button">Next: pick your chef →</button>
+          </div>
+          <div class="lobby-step" data-panel="chef" role="tabpanel" hidden>
+            <div class="chef-pick">
+              <figure class="chef-preview">
+                <img id="chef-portrait" alt="" hidden />
+                <figcaption id="chef-pick-name">Chef</figcaption>
+              </figure>
+              <div class="chef-pick-form">
+                <label class="lobby-kicker" for="chef-name">Your name</label>
+                <input id="chef-name" class="lobby-name" maxlength="12" placeholder="Your name" autocomplete="off" spellcheck="false" />
+                <p class="lobby-kicker">Pick a chef</p>
+                <div id="characters" class="character-grid" role="radiogroup" aria-label="Chef"></div>
+              </div>
+            </div>
+            <div class="lobby-step-foot">
+              <button id="back-kitchen" class="button button-quiet" type="button">← Kitchens</button>
+              <button id="start-chef" class="button button-primary" type="button">Start service <kbd>Enter</kbd></button>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -74,6 +142,39 @@
         <p id="final-orders" class="gameover-orders"></p>
         <p class="gameover-hint">Press <kbd>E</kbd> or click to <span id="result-next"></span></p>
       </div>
+    </section>
+    <p id="countdown" class="countdown" aria-live="assertive" hidden></p>
+    <section id="fullscreen-tip" class="guide fs-tip" role="dialog" aria-modal="true" aria-labelledby="fs-title" hidden>
+      <div class="guide-card fs-card">
+        <header class="guide-head">
+          <div>
+            <p class="lobby-kicker">On iPhone</p>
+            <h2 id="fs-title">Play full screen</h2>
+          </div>
+          <button type="button" class="guide-close" data-close aria-label="Close">×</button>
+        </header>
+        <ol class="fs-steps">
+          <li>
+            <span class="fs-icon"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 4v16M10 10l6-6 6 6" fill="none" stroke="#3d8fe4" stroke-width="2.800" stroke-linecap="round" stroke-linejoin="round"/><path d="M11 14H8v14h16V14h-3" fill="none" stroke="#3d8fe4" stroke-width="2.800" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            <b>Tap Share</b>
+          </li>
+          <li>
+            <span class="fs-icon"><svg viewBox="0 0 32 32" aria-hidden="true"><rect x="5" y="5" width="22" height="22" rx="6" fill="none" stroke="#241d30" stroke-width="2.800"/><path d="M16 11v10M11 16h10" stroke="#241d30" stroke-width="2.800" stroke-linecap="round"/></svg></span>
+            <b>Add to Home Screen</b>
+          </li>
+          <li>
+            <span class="fs-icon"><img src="/apple-touch-icon.png" alt="" /></span>
+            <b>Open it from your Home Screen</b>
+          </li>
+        </ol>
+        <p class="fs-note">It opens like an app: no address bar, no tabs.</p>
+        <footer class="guide-foot">
+          <button type="button" class="button button-primary" data-close>Got it</button>
+        </footer>
+      </div>
+    </section>
+    <section id="guide" class="guide" role="dialog" aria-modal="true" aria-labelledby="guide-title" hidden>
+      <div class="guide-card"></div>
     </section>
     <p class="hint">
       <kbd>WASD</kbd> move <span>·</span> <kbd>Shift</kbd> dash <span>·</span> <kbd>E</kbd> or <kbd>click</kbd> use

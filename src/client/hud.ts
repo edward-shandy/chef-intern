@@ -1,28 +1,34 @@
+import { characterName } from "../shared/characters";
 import { LEVELS, levelNumber, nextLevel, themeLevels, THEMES, type Level, type Tile } from "../shared/level";
+import { onPortraits, portraitOf } from "./portraits";
 import { RECIPES, ROUND_SECONDS, TARGET_SCALE, type GameState, type RecipeId } from "../shared/sim";
 
-type IconName = "lettuce" | "tomato" | "onion" | "soup" | "arrow" | "seaweed" | "clam" | "fish" | "bun" | "meat" | "grill";
+export type IconName = "lettuce" | "tomato" | "onion" | "soup" | "arrow" | "chicken" | "grill" | "roast" | "seaweed" | "clam" | "fish" | "bun" | "meat";
 
-const ICONS: Record<IconName, string> = {
+export const ICONS: Record<IconName, string> = {
   lettuce: `<svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="12" fill="#7ccf4f"/><path d="M16 7v18M9.5 12c2.2 2 4.3 3 6.5 3m6.500-3c-2.200 2-4.300 3-6.500 3M9 20c2.600.9 4.800.9 7 0m7 0c-2.600.9-4.800.9-7 0" fill="none" stroke="#4c9a2f" stroke-width="2" stroke-linecap="round"/></svg>`,
   tomato: `<svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="18" r="11" fill="#e23b2e"/><path d="M16 9l-5-3 2 5-5 1 5 2 3-3 3 3 5-2-5-1 2-5z" fill="#3f9b46"/></svg>`,
   onion: `<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 6c2 5 10 8 10 15a10 9 0 0 1-20 0c0-7 8-10 10-15z" fill="#c98bd0"/><path d="M16 9c-1 5-5 8-5 13m5-13c1 5 5 8 5 13m-5-13v15" fill="none" stroke="#8a4f96" stroke-width="1.8" stroke-linecap="round"/><path d="M16 6c-1-2 0-3 1-4" fill="none" stroke="#6f9a3f" stroke-width="2" stroke-linecap="round"/></svg>`,
   soup: `<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M3 15h26a13 12 0 0 1-26 0z" fill="#fffaf0" stroke="#3d8fe4" stroke-width="2.5" stroke-linejoin="round"/><ellipse cx="16" cy="15" rx="11" ry="3" fill="#d2411f"/><path d="M11 9c-1.500-2 1.500-3 0-5m5 5c-1.500-2 1.500-3 0-5m5 5c-1.500-2 1.500-3 0-5" fill="none" stroke="#b9c3d6" stroke-width="2" stroke-linecap="round"/></svg>`,
-  arrow: `<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 16h16m-6-6 6 6-6 6" fill="none" stroke="#8a8198" stroke-width="3.500" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  chicken: `<svg viewBox="0 0 32 32" aria-hidden="true"><ellipse cx="15" cy="18" rx="11" ry="8.500" fill="#f6c2b0"/><path d="M8 13c2-4 12-5 15 0" fill="none" stroke="#e29a86" stroke-width="2" stroke-linecap="round"/><path d="M24 22l4 3m-3-6 5 0" stroke="#f6c2b0" stroke-width="3.500" stroke-linecap="round"/><circle cx="28.500" cy="25.500" r="1.800" fill="#fff8ea"/><circle cx="30" cy="19" r="1.800" fill="#fff8ea"/></svg>`,
+  grill: `<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 14h22l-3 9H8z" fill="#3a3d47"/><path d="M8 14l2-3m4 3l1-3m4 3l1-3m4 3l2-3" stroke="#ff7a2a" stroke-width="2.200" stroke-linecap="round"/><path d="M5 14h22" stroke="#8a93a6" stroke-width="2" stroke-linecap="round"/><path d="M10 23l-2 5m14-5 2 5" stroke="#3a3d47" stroke-width="2" stroke-linecap="round"/></svg>`,
+  roast: `<svg viewBox="0 0 32 32" aria-hidden="true"><ellipse cx="16" cy="25" rx="13" ry="3.500" fill="#fffaf0" stroke="#3d8fe4" stroke-width="2"/><ellipse cx="15" cy="17" rx="10" ry="7.500" fill="#c8752e"/><path d="M8 14c3-3 10-3 13 0" fill="none" stroke="#e8a35a" stroke-width="2.200" stroke-linecap="round"/><path d="M23 19l4 2" stroke="#c8752e" stroke-width="3.500" stroke-linecap="round"/><circle cx="28" cy="21.500" r="1.800" fill="#fff8ea"/></svg>`,
   seaweed: `<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M11 29c-4-6 4-9 0-15s4-8 1-12" fill="none" stroke="#2f8a4a" stroke-width="4" stroke-linecap="round"/><path d="M21 29c4-6-3-9 1-14s-3-8 0-12" fill="none" stroke="#57b56a" stroke-width="4" stroke-linecap="round"/></svg>`,
   clam: `<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M4 19a12 12 0 0 1 24 0z" fill="#b58ae0"/><path d="M4 19h24a12 7 0 0 1-24 0z" fill="#8b689c"/><path d="M16 8v11M10 10l3 9M22 10l-3 9" stroke="#8b689c" stroke-width="1.600" stroke-linecap="round"/></svg>`,
   fish: `<svg viewBox="0 0 32 32" aria-hidden="true"><ellipse cx="14" cy="16" rx="10" ry="6.500" fill="#7fa8c9"/><path d="M4 17c4 3 13 3 18 0" fill="none" stroke="#dfe9f2" stroke-width="2.500" stroke-linecap="round"/><path d="M23 16l7-6v12z" fill="#5f8aa8"/><circle cx="9" cy="14" r="1.800" fill="#1c1c28"/></svg>`,
   bun: `<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M4 19a12 10 0 0 1 24 0z" fill="#d9913a"/><rect x="4" y="20" width="24" height="6" rx="2.500" fill="#e8b066"/><g fill="#fff3d6"><ellipse cx="11" cy="13" rx="1.800" ry="1"/><ellipse cx="17" cy="11" rx="1.800" ry="1"/><ellipse cx="22" cy="15" rx="1.800" ry="1"/></g></svg>`,
   meat: `<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M6 13c3-6 16-7 21-1 3 5 0 12-7 13-8 1-17-4-14-12z" fill="#c9433a"/><path d="M8 12c5-5 14-5 18 0" fill="none" stroke="#fff0e6" stroke-width="3" stroke-linecap="round"/></svg>`,
-  grill: `<svg viewBox="0 0 32 32" aria-hidden="true"><rect x="4" y="16" width="24" height="10" rx="3" fill="#3a3d47"/><path d="M6 16h20M6 20h20" stroke="#b9c0cc" stroke-width="1.600"/><path d="M11 13c-2-3 2-5 0-9m6 9c-2-3 2-5 0-9m6 9c-2-3 2-5 0-9" fill="none" stroke="#ff7a2a" stroke-width="2.200" stroke-linecap="round"/></svg>`,
+  arrow: `<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 16h16m-6-6 6 6-6 6" fill="none" stroke="#8a8198" stroke-width="3.500" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
 };
 
 // What each ticket shows: the ingredients to fetch, and for soup what they turn into.
-const RECIPE_ICONS: Record<RecipeId, IconName[]> = {
+export const RECIPE_ICONS: Record<RecipeId, IconName[]> = {
   lettuce_salad: ["lettuce"],
   salad: ["lettuce", "tomato"],
   soup: ["tomato", "tomato", "tomato", "arrow", "soup"],
   onion_soup: ["onion", "onion", "onion", "arrow", "soup"],
+  roast_chicken: ["chicken", "grill", "arrow", "roast"],
+  chicken_salad: ["roast", "lettuce", "tomato"],
   seaweed_salad: ["seaweed", "tomato"],
   clam_chowder: ["clam", "clam", "clam", "arrow", "soup"],
   grilled_fish: ["fish", "arrow", "grill"],
@@ -30,7 +36,7 @@ const RECIPE_ICONS: Record<RecipeId, IconName[]> = {
 };
 
 // The four seats, in the order players fill them: each has its own character and ring colour.
-const SEATS = [
+export const SEATS = [
   { name: "Knight", colour: "#e4573d" },
   { name: "Barbarian", colour: "#3d8fe4" },
   { name: "Mage", colour: "#4fb86a" },
@@ -56,15 +62,17 @@ const PLAN_COLOURS: Record<Tile["kind"], string> = {
   return: "#8a5fa8",
   wash: "#5fb8e8",
   extinguisher: "#d23c2c",
-  grill: "#25252c",
   sink: "#b9c3d6",
   fridge: "#b9c3d6",
   plant: "#4f9d4a",
+  grill: "#c9552a",
+  belt: "#25212b",
 };
 const CRATE_COLOURS = {
   tomato: "#e23b2e",
   lettuce: "#7ccf4f",
   onion: "#c98bd0",
+  chicken: "#f6c2b0",
   seaweed: "#2f8a4a",
   clam: "#b58ae0",
   fish: "#7fa8c9",
@@ -73,7 +81,7 @@ const CRATE_COLOURS = {
 };
 
 // Draws a kitchen's tiles as a small top-down plan.
-function floorPlan(level: Level): string {
+export function floorPlan(level: Level): string {
   const tiles = level.tiles.map((tile, index) => {
     const x = index % level.width;
     const y = Math.floor(index / level.width);
@@ -84,12 +92,15 @@ function floorPlan(level: Level): string {
   return `<svg viewBox="0 0 ${level.width} ${level.height}" aria-hidden="true"><rect width="${level.width}" height="${level.height}" fill="#f4ecdc"/>${tiles.join("")}</svg>`;
 }
 
+const TAG_STYLES: Record<string, string> = { Fire: "fire", "Dish washing": "wash", Grill: "grill", Conveyor: "belt" };
+
 // What sets a kitchen apart, as short tags.
 function levelTags(level: Level): string[] {
   const tags = [`${level.recipes.length} recipes`];
   if (level.plates) tags.push("Dish washing");
-  if (level.tiles.some((tile) => tile.kind === "grill")) tags.push("Grill");
   if (level.fire) tags.push("Fire");
+  if (level.tiles.some((tile) => tile.kind === "grill")) tags.push("Grill");
+  if (level.tiles.some((tile) => tile.kind === "belt")) tags.push("Conveyor");
   return tags;
 }
 
@@ -123,7 +134,7 @@ export function createHud(onLevel: (level: number) => void): {
     button.type = "button";
     button.className = "level-card";
     const dots = Array.from({ length: 5 }, (_, i) => `<i${i < level.difficulty ? ' class="on"' : ""}></i>`).join("");
-    const tags = levelTags(level).map((tag) => `<span class="level-tag level-tag-${tag === "Fire" ? "fire" : tag === "Dish washing" ? "wash" : tag === "Grill" ? "grill" : "plain"}">${tag}</span>`);
+    const tags = levelTags(level).map((tag) => `<span class="level-tag level-tag-${TAG_STYLES[tag] ?? "plain"}">${tag}</span>`);
     button.innerHTML = `<span class="level-plan">${floorPlan(level)}<b class="level-number">${levelNumber(index)}</b></span><span class="level-name">${level.name}</span><span class="level-dots" aria-label="Difficulty ${level.difficulty} of 5">${dots}</span><span class="level-tags">${tags.join("")}</span><span class="level-goal"><b data-target></b> pts in ${minutes} min</span>`;
     button.addEventListener("click", () => onLevel(index));
     return button;
@@ -146,6 +157,10 @@ export function createHud(onLevel: (level: number) => void): {
   let lobbyKey = "";
   const cards = new Map<number, HTMLElement>();
   let shownScore: number | null = null;
+  let portraitsReady = false;
+  onPortraits(() => {
+    portraitsReady = true;
+  });
 
   const createCard = (recipe: RecipeId): HTMLElement => {
     const card = document.createElement("article");
@@ -196,8 +211,9 @@ export function createHud(onLevel: (level: number) => void): {
       fireAlert.hidden = state.phase === "over" || Object.keys(state.fires ?? {}).length === 0;
       // One row per seat, rebuilt only when someone joins or leaves.
       const seats = state.players.map((player) => player.id).sort();
-      const names = new Map(state.players.map((player) => [player.id, player.name]));
-      const key = `${seats.map((id) => `${id}=${names.get(id)}`).join(",")}:${localId}`;
+      const names = new Map(state.players.map((player) => [player.id, player.name || characterName(player.character)]));
+      const looks = new Map(state.players.map((player) => [player.id, player.character]));
+      const key = `${seats.map((id) => `${id}=${names.get(id)}/${looks.get(id)}`).join(",")}:${localId}:${portraitsReady}`;
       if (key !== lobbyKey) {
         lobbyKey = key;
         lobbyChefs.replaceChildren(
@@ -207,6 +223,12 @@ export function createHud(onLevel: (level: number) => void): {
             row.className = taken ? "" : "empty";
             row.style.setProperty("--seat", taken ? seat.colour : "transparent");
             row.textContent = taken ? names.get(id) || seat.name : "Waiting for a chef…";
+            // Each chef in the room shows as their portrait, framed in their seat's colour.
+            const portrait = taken ? portraitOf(looks.get(id)!) : null;
+            if (portrait) {
+              row.classList.add("has-face");
+              row.prepend(Object.assign(document.createElement("img"), { src: portrait, alt: "", className: "lobby-face" }));
+            }
             if (id === localId) row.append(Object.assign(document.createElement("small"), { textContent: "You" }));
             return row;
           }),
