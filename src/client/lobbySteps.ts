@@ -6,7 +6,7 @@ export interface ChefPicker {
   update(state: GameState | null, localId: number | null): void;
 }
 
-// The room lobby's two steps: the shared kitchen picker, then this player's own chef and name.
+// The room lobby's three steps: the shared theme and kitchen pickers, then this player's own chef and name.
 export function createChefPicker(onPick: (character: string) => void, onStart: () => void): ChefPicker {
   const tabs = [...document.querySelectorAll<HTMLButtonElement>(".lobby-steps [data-step]")];
   const panels = [...document.querySelectorAll<HTMLElement>(".lobby-step[data-panel]")];
@@ -23,6 +23,12 @@ export function createChefPicker(onPick: (character: string) => void, onStart: (
     panels.forEach((panel) => (panel.hidden = panel.dataset.panel !== step));
   };
   tabs.forEach((tab) => tab.addEventListener("click", () => show(tab.dataset.step!)));
+  document.querySelector("#to-kitchen")!.addEventListener("click", () => show("kitchen"));
+  document.querySelector("#back-theme")!.addEventListener("click", () => show("theme"));
+  // Picking a theme card moves straight on to that theme's kitchens.
+  document.querySelector("#themes")!.addEventListener("click", (event) => {
+    if ((event.target as Element).closest(".theme-card")) show("kitchen");
+  });
   document.querySelector("#to-chef")!.addEventListener("click", () => show("chef"));
   document.querySelector("#back-kitchen")!.addEventListener("click", () => show("kitchen"));
   document.querySelector("#start-chef")!.addEventListener("click", onStart);

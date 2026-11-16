@@ -14,7 +14,7 @@ import {
 import { decoration, model, MODEL_SCALE, modelGeometry, modelMaterial, type ModelName } from "./assets";
 import { createExtinguisher } from "./fire";
 import { CODE_FOOD, createBurger, createCrate, createFood, type Stage } from "./food";
-import { createSea, SEA_SAND } from "./sea";
+import { createCoralPot, createSea, createSeaCounter, SEA_SAND } from "./sea";
 import { createStreet, streetGround } from "./street";
 
 export { animateStreet } from "./street";
@@ -602,8 +602,8 @@ export function createItem(item: Item): THREE.Group {
       }
       if (item.contents.includes("onion")) parts.add(part(CHOPPED.onion, 0, hasLettuce ? 0.15 : 0.08, 0, 0.8, 0.5));
       if (burger) group.add(createBurger(item.contents));
-      if (item.contents.includes("seaweed")) group.add(Object.assign(createFood("seaweed", "chopped"), { position: new THREE.Vector3(-0.05, 0.03, 0) }));
-      if (item.contents.includes("fish")) group.add(Object.assign(createFood("fish", "cooked"), { position: new THREE.Vector3(0, 0.03, 0) }));
+      if (item.contents.includes("seaweed")) group.add(put(createFood("seaweed", "chopped"), -0.05, 0.03, 0));
+      if (item.contents.includes("fish")) group.add(put(createFood("fish", "cooked"), 0, 0.03, 0));
       if (item.contents.includes("roast_chicken")) {
         // Served on its own the chicken sits in the middle; in a salad it shares the plate with the leaves.
         const chicken = createChicken("roast");
@@ -856,7 +856,8 @@ export function createStations(level: Level): Stations {
       counters.push({ x, z, turn });
     }
     if (tile.kind === "plant") {
-      const plant = decoration(level.decor.plants[plants++ % level.decor.plants.length]);
+      // Under the sea the plant spots hold potted coral instead of the town's house plants.
+      const plant = level.theme === "sea" ? createCoralPot(plants++) : decoration(level.decor.plants[plants++ % level.decor.plants.length]);
       if (plant) {
         plant.position.set(x, top, z);
         plant.rotation.y = plants * 1.7;
@@ -995,16 +996,23 @@ export function createStations(level: Level): Stations {
   });
   if (serveTiles > 0) serveCentre.divideScalar(serveTiles);
 
-  // Every plain counter is one instance of the same model, turned to face its floor side.
-  const instanced = new THREE.InstancedMesh(modelGeometry("kitchencounter_straight_A"), modelMaterial(), counters.length);
+  // Every plain counter is one instance of the same model, turned to face its floor side; sea kitchens use their
+  // own code-built cabinet, which comes as a few meshes that are each instanced the same way.
   const matrix = new THREE.Matrix4();
   const turned = new THREE.Quaternion();
   const up = new THREE.Vector3(0, 1, 0);
-  const size = new THREE.Vector3(MODEL_SCALE, MODEL_SCALE, MODEL_SCALE);
-  counters.forEach(({ x, z, turn }, i) => {
-    instanced.setMatrixAt(i, matrix.compose(new THREE.Vector3(x, 0, z), turned.setFromAxisAngle(up, turn), size));
-  });
-  group.add(instanced);
+  const sea = level.theme === "sea";
+  const size = sea ? new THREE.Vector3(1, 1, 1) : new THREE.Vector3(MODEL_SCALE, MODEL_SCALE, MODEL_SCALE);
+  const parts = sea
+    ? (createSeaCounter().children as THREE.Mesh[]).map((part) => [part.geometry, part.material as THREE.Material] as const)
+    : [[modelGeometry("kitchencounter_straight_A"), modelMaterial()] as const];
+  for (const [geometry, material] of parts) {
+    const instanced = new THREE.InstancedMesh(geometry, material, counters.length);
+    counters.forEach(({ x, z, turn }, i) => {
+      instanced.setMatrixAt(i, matrix.compose(new THREE.Vector3(x, 0, z), turned.setFromAxisAngle(up, turn), size));
+    });
+    group.add(instanced);
+  }
   shadowed(group);
   group.add(labels, unshadowed);
   return { group, flames, serveCentre, plateStack, dirtyPile, sinkDirty, sinkClean, washTile, beltMap };

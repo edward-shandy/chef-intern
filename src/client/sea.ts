@@ -254,19 +254,169 @@ function createSubmarine(): THREE.Group {
   return sub;
 }
 
-// A brass lantern post that lights the dining spots.
-function createLantern(): THREE.Group {
-  const lantern = new THREE.Group();
-  const brass = mat(0xd9a441, 0.35, 0.7);
-  const light = new THREE.MeshStandardMaterial({ color: 0xffe9a8, emissive: 0xffd27a, emissiveIntensity: 0.9, roughness: 0.4 });
-  lantern.add(
-    mesh(cylinder(0.14, 0.18, 0.12, 10), brass, 0, 0.06, 0),
-    mesh(cylinder(0.04, 0.05, 1.5, 8), brass, 0, 0.8, 0),
-    mesh(cylinder(0.16, 0.16, 0.05, 10), brass, 0, 1.55, 0),
-    mesh(ball(0.17, 12), light, 0, 1.73, 0),
-    mesh(new THREE.ConeGeometry(0.2, 0.14, 10), brass, 0, 1.94, 0),
+// ---------------------------------------------------------------- dining furniture
+// Inspired by real undersea dining rooms: coral-based tables, soft "anemone" seats, shell-backed chairs and
+// jellyfish lamps instead of the town's wooden sets and brass posts.
+
+const PEARL = 0xfff4ea;
+
+// A round table: a pearly top with a scalloped rim on a pink brain-coral pedestal, with a shell and pearl in the middle.
+function createClamTable(): THREE.Group {
+  const table = new THREE.Group();
+  const coral = flat(0xf27aa0);
+  const pedestal = mesh(blob(0.32), coral, 0, 0.2, 0);
+  pedestal.scale.set(1, 0.7, 1);
+  table.add(pedestal, mesh(cylinder(0.11, 0.16, 0.5, 8), coral, 0, 0.45, 0));
+  for (let i = 0; i < 5; i++) {
+    const ridge = mesh(new THREE.TorusGeometry(0.12 + i * 0.04, 0.018, 4, 12, Math.PI), flat(0xf9a8c4), 0, 0.2, 0);
+    ridge.rotation.y = i * 0.6;
+    table.add(ridge);
+  }
+  const top = mat(0xfde7ee, 0.35, 0.05);
+  table.add(mesh(cylinder(0.5, 0.46, 0.07, 24), top, 0, 0.72, 0), mesh(cylinder(0.44, 0.44, 0.012, 24), mat(0x9fe0e8, 0.3), 0, 0.762, 0));
+  for (let i = 0; i < 16; i++) {
+    const angle = (i / 16) * Math.PI * 2;
+    table.add(mesh(ball(0.05, 8), top, Math.cos(angle) * 0.5, 0.72, Math.sin(angle) * 0.5));
+  }
+  const shell = mesh(dome(0.11), mat(0xb58ae0, 0.5), 0, 0.77, 0);
+  shell.scale.y = 0.4;
+  table.add(shell, mesh(ball(0.045, 10), mat(PEARL, 0.15, 0.3), 0, 0.8, 0));
+  for (const x of [-0.27, 0.27]) table.add(mesh(cylinder(0.11, 0.11, 0.012, 14), mat(0xffffff, 0.3), x, 0.775, 0));
+  return table;
+}
+
+// A long table: a driftwood top on two branching coral legs, with a sand-dollar runner and a sea-glass vase.
+function createDriftTable(): THREE.Group {
+  const table = new THREE.Group();
+  const wood = mat(0xb9a284, 0.85);
+  table.add(mesh(rounded(1.0, 0.07, 0.62, 0.03), wood, 0, 0.72, 0));
+  for (let i = -2; i <= 2; i++) table.add(mesh(box(0.01, 0.072, 0.6), mat(0x8f7b62, 0.9), i * 0.2, 0.721, 0));
+  for (const x of [-0.34, 0.34]) {
+    const leg = new THREE.Group();
+    leg.add(mesh(cylinder(0.06, 0.09, 0.7, 7), flat(0xff9d5c), 0, 0.35, 0));
+    leg.add(tilt(mesh(cylinder(0.035, 0.05, 0.35, 6), flat(0xff9d5c), 0.09, 0.4, 0), 0, 0, -0.7));
+    leg.add(mesh(blob(0.05), flat(0xffc79a), 0.2, 0.52, 0), mesh(blob(0.07), flat(0xffc79a), 0, 0.03, 0));
+    leg.position.x = x;
+    leg.rotation.y = x > 0 ? Math.PI : 0;
+    table.add(leg);
+  }
+  for (const x of [-0.26, 0, 0.26]) table.add(mesh(cylinder(0.08, 0.08, 0.012, 14), mat(0xf1e6cf, 0.6), x, 0.762, 0.08));
+  const vase = new THREE.MeshStandardMaterial({ color: 0x7fe3d0, roughness: 0.1, transparent: true, opacity: 0.7 });
+  table.add(mesh(cylinder(0.05, 0.07, 0.16, 12), vase, 0, 0.84, -0.12));
+  for (let i = 0; i < 3; i++) table.add(tilt(mesh(cylinder(0.008, 0.012, 0.22, 5), flat(0x3f9d57), (i - 1) * 0.03, 0.96, -0.12), 0, 0, (i - 1) * 0.3));
+  return table;
+}
+
+// A soft anemone seat: a velvet cushion fringed with stubby tentacles.
+function createAnemoneStool(colour: number): THREE.Group {
+  const stool = new THREE.Group();
+  const velvet = mat(colour, 0.9);
+  const tip = mat(new THREE.Color(colour).lerp(new THREE.Color(0xffffff), 0.5).getHex(), 0.8);
+  stool.add(mesh(cylinder(0.15, 0.2, 0.32, 14), velvet, 0, 0.16, 0), mesh(cylinder(0.22, 0.2, 0.12, 16), velvet, 0, 0.38, 0));
+  const top = mesh(dome(0.22), velvet, 0, 0.43, 0);
+  top.scale.y = 0.3;
+  stool.add(top);
+  for (let i = 0; i < 14; i++) {
+    const angle = (i / 14) * Math.PI * 2;
+    const tentacle = new THREE.Group();
+    tentacle.add(mesh(cylinder(0.025, 0.035, 0.16, 6), velvet, 0, 0.08, 0), mesh(ball(0.032, 6), tip, 0, 0.16, 0));
+    tentacle.position.set(Math.cos(angle) * 0.2, 0.36, Math.sin(angle) * 0.2);
+    tentacle.rotation.set(Math.sin(angle) * 1.1, 0, -Math.cos(angle) * 1.1);
+    stool.add(tentacle);
+  }
+  return stool;
+}
+
+// A shell-backed chair: a scallop fan behind the cushion, on a short coral foot; `side` is which way the back faces.
+function createScallopChair(colour: number, side: number): THREE.Group {
+  const chair = new THREE.Group();
+  const shell = new THREE.MeshStandardMaterial({ color: colour, roughness: 0.55, side: THREE.DoubleSide, flatShading: true });
+  const rib = mat(new THREE.Color(colour).multiplyScalar(0.8).getHex(), 0.6);
+  chair.add(mesh(cylinder(0.12, 0.17, 0.36, 8), flat(0xf9a8c4), 0, 0.18, 0), mesh(cylinder(0.23, 0.23, 0.08, 16), mat(0x2f9e9e, 0.9), 0, 0.4, 0));
+  // The fan leans back away from the table, so it reads from the camera above rather than edge-on.
+  const fan = new THREE.Group();
+  fan.add(mesh(new THREE.CircleGeometry(0.46, 12, 0, Math.PI), shell, 0, 0, 0));
+  for (let i = 1; i < 7; i++) {
+    const angle = (i / 7) * Math.PI;
+    const ribMesh = mesh(box(0.035, 0.44, 0.04), rib, Math.cos(angle) * 0.22, Math.sin(angle) * 0.22, 0.015);
+    ribMesh.rotation.z = angle - Math.PI / 2;
+    fan.add(ribMesh);
+  }
+  fan.add(mesh(cylinder(0.05, 0.05, 0.1, 8), rib, 0, 0.03, 0.02));
+  fan.rotation.x = -0.55;
+  const back = new THREE.Group();
+  back.add(fan);
+  back.position.set(side * 0.2, 0.42, 0);
+  back.rotation.y = side > 0 ? -Math.PI / 2 : Math.PI / 2;
+  chair.add(back);
+  return chair;
+}
+
+// A jellyfish floor lamp: a glowing bell on a slim stem, its tentacles hanging round the stem.
+function createJellyLamp(colour: number): THREE.Group {
+  const lamp = new THREE.Group();
+  const glow = new THREE.MeshStandardMaterial({ color: colour, emissive: colour, emissiveIntensity: 0.8, roughness: 0.3, transparent: true, opacity: 0.85 });
+  lamp.add(
+    mesh(blob(0.2), flat(0x7d8fa0), 0, 0.08, 0),
+    mesh(cylinder(0.025, 0.035, 1.6, 6), mat(0xd9e6ee, 0.3, 0.6), 0, 0.85, 0),
   );
-  return lantern;
+  const bell = mesh(dome(0.32), glow, 0, 1.6, 0);
+  bell.scale.y = 0.8;
+  lamp.add(bell, mesh(cylinder(0.33, 0.28, 0.06, 16), glow, 0, 1.58, 0));
+  for (let i = 0; i < 9; i++) {
+    const angle = (i / 9) * Math.PI * 2;
+    lamp.add(mesh(cylinder(0.012, 0.006, 0.45 + (i % 3) * 0.15, 5), glow, Math.cos(angle) * 0.2, 1.3 - (i % 3) * 0.07, Math.sin(angle) * 0.2));
+  }
+  return lamp;
+}
+
+// A kitchen cabinet for the sea kitchens, front facing +z, top at the worktop height: a teal body with two
+// brass-rimmed porthole doors, a pearl worktop with a scalloped lip, and a sand-coloured kick plate.
+// Baked into one mesh per material so createStations can draw every counter as a few instanced meshes.
+export function createSeaCounter(): THREE.Group {
+  const cabinet = new THREE.Group();
+  const body = mat(0x2f8a96, 0.6);
+  const brass = mat(0xd9a441, 0.35, 0.7);
+  const glass = new THREE.MeshStandardMaterial({ color: 0x8fe0ef, emissive: 0x2a8fb4, emissiveIntensity: 0.25, roughness: 0.1 });
+  // A pale coral worktop, so the counters stand apart from the white and mint floor.
+  const pearl = mat(0xf3d3c0, 0.35, 0.05);
+  cabinet.add(
+    mesh(box(0.98, 0.06, 0.92), mat(0xd8c69a, 0.8), 0, 0.03, 0),
+    mesh(rounded(0.96, 0.4, 0.9, 0.04), body, 0, 0.25, 0),
+    mesh(box(0.97, 0.02, 0.91), mat(0x24707a, 0.6), 0, 0.235, 0),
+    mesh(rounded(1.0, 0.07, 1.0, 0.025), pearl, 0, 0.465, 0),
+  );
+  // A scalloped lip of little shells along the front edge.
+  for (let i = 0; i < 7; i++) {
+    const lip = mesh(dome(0.06), mat(0xf7c9d6, 0.45), -0.42 + i * 0.14, 0.43, 0.49);
+    lip.rotation.x = Math.PI / 2;
+    lip.scale.set(1, 0.5, 0.6);
+    cabinet.add(lip);
+  }
+  for (const x of [-0.23, 0.23]) {
+    const ring = mesh(new THREE.TorusGeometry(0.11, 0.025, 6, 16), brass, x, 0.25, 0.455);
+    const pane = mesh(cylinder(0.1, 0.1, 0.02, 16), glass, x, 0.25, 0.455);
+    pane.rotation.x = Math.PI / 2;
+    cabinet.add(ring, pane);
+    for (let i = 0; i < 4; i++) {
+      const angle = (i / 4) * Math.PI * 2 + Math.PI / 4;
+      cabinet.add(mesh(ball(0.014, 6), brass, x + Math.cos(angle) * 0.11, 0.25 + Math.sin(angle) * 0.11, 0.48));
+    }
+    cabinet.add(mesh(ball(0.025, 8), brass, x + (x < 0 ? 0.15 : -0.15), 0.25, 0.47));
+  }
+  return bake(cabinet);
+}
+
+// A coral in a little stone pot, for the plant spots on the kitchen counters.
+export function createCoralPot(seed: number): THREE.Group {
+  const pot = new THREE.Group();
+  pot.add(mesh(cylinder(0.16, 0.12, 0.18, 10), flat(0x5f9aa6), 0, 0.09, 0), mesh(cylinder(0.17, 0.17, 0.03, 10), flat(0x7cc2c8), 0, 0.18, 0));
+  const kinds: CoralKind[] = ["branch", "tube", "fan", "brain"];
+  const coral = createCoral(kinds[seed % kinds.length], [0xf27aa0, 0xff9d5c, 0xb58ae0, 0xffd166][seed % 4], seed * 2.3);
+  coral.scale.multiplyScalar(0.42);
+  coral.position.y = 0.18;
+  pot.add(coral);
+  return pot;
 }
 
 // ---------------------------------------------------------------- sea floor
@@ -396,23 +546,25 @@ export function createSea(level: Level, anisotropy: number, guests: THREE.Object
 
   // Diners sit at tables on stone pads either side, each inside a bubble helmet.
   const bubble = new THREE.MeshStandardMaterial({ color: 0xcdf3ff, roughness: 0.05, transparent: true, opacity: 0.32, depthWrite: false });
-  const sets: Array<[string, number, number, string[]]> = [
-    ["dining_round", -3.6, 1.6, ["guest_coral", "guest_blue"]],
-    ["dining_square", -3.8, 4.6, ["guest_mint", ""]],
-    ["dining_round", -3.4, 7.6, ["guest_mustard", "guest_coral"]],
-    ["dining_square", width + 3.6, 1.6, ["", "guest_mint"]],
-    ["dining_round", width + 3.8, 4.6, ["guest_blue", "guest_mustard"]],
-    ["dining_square", width + 3.4, 7.6, ["guest_coral", ""]],
+  // Round coral tables get anemone seats; long driftwood tables get shell-backed chairs.
+  const seatColours = [0x4fd1c5, 0xb58ae0, 0xff9d5c, 0x3d8fe4, 0xf27aa0, 0xffd166];
+  const sets: Array<["clam" | "drift", number, number, string[]]> = [
+    ["clam", -3.6, 1.6, ["guest_coral", "guest_blue"]],
+    ["drift", -3.8, 4.6, ["guest_mint", ""]],
+    ["clam", -3.4, 7.6, ["guest_mustard", "guest_coral"]],
+    ["drift", width + 3.6, 1.6, ["", "guest_mint"]],
+    ["clam", width + 3.8, 4.6, ["guest_blue", "guest_mustard"]],
+    ["drift", width + 3.4, 7.6, ["guest_coral", ""]],
   ];
-  for (const [model, x, z, seats] of sets) {
-    const furniture = decoration(model);
-    if (!furniture) continue;
+  sets.forEach(([style, x, z, seats], table) => {
     const set = new THREE.Group();
-    set.add(furniture);
-    seats.forEach((name, seat) => {
+    set.add(style === "clam" ? createClamTable() : createDriftTable());
+    [-0.82, 0.82].forEach((seatX, seat) => {
+      const colour = seatColours[(table * 2 + seat) % seatColours.length];
+      set.add(put(style === "clam" ? createAnemoneStool(colour) : createScallopChair(colour, Math.sign(seatX)), seatX, 0, 0));
+      const name = seats[seat];
       const guest = name ? decoration(name) : null;
       if (!guest) return;
-      const seatX = seat === 0 ? -0.82 : 0.82;
       const bounds = new THREE.Box3().setFromObject(guest);
       const radius = (bounds.max.x - bounds.min.x) * 0.62;
       const diver = new THREE.Group();
@@ -425,11 +577,12 @@ export function createSea(level: Level, anisotropy: number, guests: THREE.Object
     });
     set.position.set(x, 0, z);
     set.scale.setScalar(0.78);
-    group.add(set);
+    solid.add(set);
     pads.push({ x, z, radius: 1.5 });
     shadows.push({ x, z, radius: 1.2 });
-  }
-  for (const [x, z] of [[-5.6, 3.1], [-5.6, 6.1], [width + 5.6, 3.1], [width + 5.6, 6.1]]) place(createLantern(), x, z, 0, 0.4);
+  });
+  const lampColours = [0xf7a8d8, 0x7fe3ff, 0xb58ae0, 0xf7a8d8];
+  [[-5.6, 3.1], [-5.6, 6.1], [width + 5.6, 3.1], [width + 5.6, 6.1]].forEach(([x, z], i) => place(createJellyLamp(lampColours[i]), x, z, 0, 0.4));
 
   // The reef: coral gardens behind the glass and in the corners, rocks, a clam, a chest and the delivery submarine.
   const pinks = [0xf27aa0, 0xff9d5c, 0xb58ae0, 0xffd166, 0x4fd1c5, 0xe4573d];

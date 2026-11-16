@@ -487,20 +487,20 @@ kbd {
   background: #d9effb;
 }
 
-/* Theme cards sit in one row above the kitchens and scroll sideways if there are ever too many. */
-.theme-row {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 6px;
+/* Theme cards fill their own step as a grid that scrolls, so more themes need no new layout. */
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+  align-content: start;
+  min-height: 0;
   padding: 4px;
-  overflow-x: auto;
+  overflow-y: auto;
 }
 
 .theme-card {
   display: grid;
-  flex: 0 0 auto;
-  gap: 3px;
-  width: 190px;
+  gap: 4px;
   padding: 6px 6px 8px;
   border: 2px solid rgb(36 29 48 / 0.14);
   border-radius: 14px;
@@ -537,7 +537,7 @@ kbd {
 }
 
 .theme-name {
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 900;
   line-height: 1.15;
 }
@@ -553,11 +553,14 @@ kbd {
 }
 
 @media (max-height: 480px) {
+  .theme-grid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  }
+
   .theme-card {
-    grid-template-columns: 70px 1fr;
+    grid-template-columns: 90px 1fr;
     align-items: center;
     column-gap: 8px;
-    width: 230px;
   }
 
   .theme-art {

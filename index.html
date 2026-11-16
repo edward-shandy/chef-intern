@@ -86,20 +86,27 @@
           <button id="leave-lobby" class="button button-quiet" type="button">Back to the front door</button>
         </div>
         <div class="lobby-main">
-          <!-- Two steps: the crew picks a kitchen together, then each player picks a chef and a name. -->
+          <!-- Three steps: the crew picks a theme and a kitchen together, then each player picks a chef and a name. -->
           <div class="lobby-steps" role="tablist" aria-label="Setup">
-            <button type="button" role="tab" data-step="kitchen" aria-selected="true"><b>1</b> Kitchen</button>
-            <button type="button" role="tab" data-step="chef" aria-selected="false"><b>2</b> Your chef</button>
+            <button type="button" role="tab" data-step="theme" aria-selected="true"><b>1</b> Theme</button>
+            <button type="button" role="tab" data-step="kitchen" aria-selected="false"><b>2</b> Kitchen</button>
+            <button type="button" role="tab" data-step="chef" aria-selected="false"><b>3</b> Your chef</button>
           </div>
-          <div class="lobby-step" data-panel="kitchen" role="tabpanel">
+          <div class="lobby-step" data-panel="theme" role="tabpanel">
             <p class="lobby-kicker">Choose a theme</p>
-            <div id="themes" class="theme-row" role="group" aria-label="Theme"></div>
+            <div id="themes" class="theme-grid" role="group" aria-label="Theme"></div>
+            <button id="to-kitchen" class="button button-primary lobby-next" type="button">Next: pick a kitchen →</button>
+          </div>
+          <div class="lobby-step" data-panel="kitchen" role="tabpanel" hidden>
             <div class="lobby-head">
               <p class="lobby-kicker">Choose a kitchen</p>
               <span id="level-count" class="lobby-count"></span>
             </div>
             <div id="levels" class="level-grid" role="group" aria-label="Kitchen"></div>
-            <button id="to-chef" class="button button-primary lobby-next" type="button">Next: pick your chef →</button>
+            <div class="lobby-step-foot">
+              <button id="back-theme" class="button button-quiet" type="button">← Themes</button>
+              <button id="to-chef" class="button button-primary" type="button">Next: pick your chef →</button>
+            </div>
           </div>
           <div class="lobby-step" data-panel="chef" role="tabpanel" hidden>
             <div class="chef-pick">
