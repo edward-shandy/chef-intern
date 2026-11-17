@@ -5,7 +5,20 @@ const INK = "#241d30";
 const SKIN = "#f2c29b";
 const SHIRTS = ["#e4573d", "#3d8fe4", "#4fb86a", "#e4b03d"];
 
-export type Scene = "grab" | "chop" | "plate" | "serve" | "soup" | "pass" | "wash" | "grill" | "fire" | "combo" | "belt";
+export type Scene =
+  | "grab"
+  | "chop"
+  | "plate"
+  | "serve"
+  | "soup"
+  | "pass"
+  | "wash"
+  | "grill"
+  | "fire"
+  | "combo"
+  | "belt"
+  | "warp"
+  | "float";
 
 const svg = (body: string) =>
   `<svg viewBox="0 0 200 140" aria-hidden="true"><rect width="200" height="140" fill="#fbe6cb"/><path d="M0 34h200M0 68h200" stroke="#f3d6b0" stroke-width="2"/>${body}</svg>`;
@@ -50,6 +63,10 @@ const flame = (x: number, y: number, size = 1, cls = "ill-flicker") =>
   `<g class="${cls}" style="transform-origin:${x}px ${y}px"><path d="M${x} ${y - 30 * size}c5 9 14 13 14 22a14 14 0 0 1-28 0c0-6 4-9 6-15 2 4 3 5 4 5 0-5 2-9 4-12z" fill="#ff7a2a" stroke="${INK}" stroke-width="2"/><path d="M${x} ${y - 13 * size}c2 4 6 6 6 10a6 6 0 0 1-12 0c0-4 4-6 6-10z" fill="#ffd166"/></g>`;
 const tag = (x: number, y: number, text: string, fill = INK) =>
   `<g><rect x="${x - text.length * 4.5 - 7}" y="${y - 11}" width="${text.length * 9 + 14}" height="20" rx="10" fill="${fill}"/><text x="${x}" y="${y + 4}" text-anchor="middle" font-size="13" font-weight="900" fill="#fff">${text}</text></g>`;
+
+// A teleport pad seen from the front: a steel rim and a glowing disc, in the given colour.
+const pad = (x: number, colour: string) =>
+  `<ellipse cx="${x}" cy="118" rx="30" ry="9" fill="#3a3d47" stroke="${INK}" stroke-width="2"/><ellipse cx="${x}" cy="117" rx="22" ry="6" fill="${colour}"/>`;
 
 const SCENES: Record<Scene, () => string> = {
   // Reaching into a crate and coming back with a tomato.
@@ -144,6 +161,28 @@ const SCENES: Record<Scene, () => string> = {
       <text x="126" y="46" font-size="22" font-weight="900" fill="${INK}">+</text>
       <g class="ill-drop ill-delay-2">${tomato(156, 40, 11)}</g>
       ${chicken(86, 86, "#c8752e")}${salad(124, 94)}`),
+
+  // A chef steps on one pad and pops out of its partner across a wall, in a flash of sparkles.
+  warp: () =>
+    svg(`<rect width="200" height="140" fill="#1d2440"/>
+      <g fill="#fff">${[[20, 20], [60, 12], [110, 26], [150, 10], [185, 30], [40, 46], [170, 56]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="1.600"/>`).join("")}</g>
+      <rect x="92" y="40" width="16" height="100" fill="#d9e2ee" stroke="${INK}" stroke-width="2.500"/>
+      ${pad(45, "#9b7bff")}${pad(155, "#9b7bff")}
+      <g class="ill-warp-out">${chef(45, SHIRTS[0], 0.75)}</g>
+      <g class="ill-warp-in">${chef(155, SHIRTS[0], 0.75)}</g>
+      <g class="ill-beam"><path d="M25 118V40M65 118V40M135 118V40M175 118V40" stroke="#9b7bff" stroke-width="3" stroke-dasharray="4 8" opacity=".7"/></g>
+      <g class="ill-sparkle"><path d="M45 54l3 7 7 3-7 3-3 7-3-7-7-3 7-3zM155 54l3 7 7 3-7 3-3 7-3-7-7-3 7-3z" fill="#ffd166"/></g>`),
+
+  // A chef floats off the floor in zero gravity and keeps drifting after letting go of the stick.
+  float: () =>
+    svg(`<rect width="200" height="140" fill="#1d2440"/>
+      <g fill="#fff">${[[16, 18], [70, 10], [120, 22], [176, 14], [30, 50], [160, 44]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="1.600"/>`).join("")}</g>
+      <rect x="0" y="118" width="200" height="22" fill="#8f99ad"/><path d="M0 118h200" stroke="${INK}" stroke-width="2"/>
+      <g class="ill-drift">
+        <ellipse cx="100" cy="122" rx="22" ry="4" fill="#000" opacity=".25"/>
+        <g class="ill-bob">${chef(100, SHIRTS[1], 0.8)}</g>
+        <path d="M54 72h-24M58 86h-30M54 100h-20" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".7"/>
+      </g>`),
 
   // A plate rides the belt from one chef to the other while the chevrons roll.
   belt: () =>

@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
-import type { Level, TileKind } from "../shared/level";
+import { walkable, type Level, type TileKind } from "../shared/level";
 import {
   BELT_SECONDS,
   BURN_AT,
@@ -15,6 +15,7 @@ import { decoration, model, MODEL_SCALE, modelGeometry, modelMaterial, type Mode
 import { createExtinguisher } from "./fire";
 import { CODE_FOOD, createBurger, createCrate, createFood, type Stage } from "./food";
 import { createCoralPot, createSea, createSeaCounter, SEA_SAND } from "./sea";
+import { createSpace, createSpaceCounter } from "./space";
 import { createStreet, streetGround } from "./street";
 
 export { animateStreet } from "./street";
@@ -254,12 +255,24 @@ export function animateGuests(room: THREE.Group, time: number, cheer: number): v
   });
 }
 
+// Floor images are loaded once and shared by every kitchen that uses them. Loading the same image again while a
+// switch of kitchens rebuilt the room in quick succession left one floor drawn black, before its image arrived.
+const imageTextures = new Map<string, THREE.Texture>();
+function imageTexture(url: string): THREE.Texture {
+  let texture = imageTextures.get(url);
+  if (!texture) {
+    texture = new THREE.TextureLoader().load(url);
+    imageTextures.set(url, texture);
+  }
+  return texture;
+}
+
 // Floor, a wooden deck around it, the restaurant or a plain wall behind, and lamps over the back counters.
 export function createRoom(level: Level, anisotropy: number): THREE.Group {
   const room = new THREE.Group();
   const { width, height } = level;
   const plan = level.decor.room;
-  const floorMap = plan?.kitchenFloor ? new THREE.TextureLoader().load(plan.kitchenFloor) : floorTexture(level, anisotropy);
+  const floorMap = plan?.kitchenFloor ? imageTexture(plan.kitchenFloor) : floorTexture(level, anisotropy);
   floorMap.colorSpace = THREE.SRGBColorSpace;
   floorMap.anisotropy = anisotropy;
   if (plan?.kitchenFloor) {
@@ -292,7 +305,14 @@ export function createRoom(level: Level, anisotropy: number): THREE.Group {
   );
   deck.rotation.x = -Math.PI / 2;
   floor.receiveShadow = deck.receiveShadow = true;
-  room.add(deck, floor);
+  // In orbit there is no ground beyond the deck, only space; the station's own slab is built by createSpace.
+  room.add(floor);
+  if (!plan?.space) room.add(deck);
+  if (plan?.space) {
+    const space = createSpace(level);
+    room.add(space.group);
+    room.userData.space = space.view;
+  }
 
   const solid = new THREE.Group();
   const guests: THREE.Object3D[] = [];
@@ -304,7 +324,7 @@ export function createRoom(level: Level, anisotropy: number): THREE.Group {
     // A tiled dining floor surrounds the kitchen and sits just under its own floor.
     const depth = height + 3.6;
     const span = width + plan.margin * 2;
-    const tiles = plan.floor ? new THREE.TextureLoader().load(plan.floor) : diningFloorTexture(anisotropy);
+    const tiles = plan.floor ? imageTexture(plan.floor) : diningFloorTexture(anisotropy);
     tiles.colorSpace = THREE.SRGBColorSpace;
     tiles.wrapS = tiles.wrapT = THREE.RepeatWrapping;
     tiles.anisotropy = anisotropy;
@@ -438,7 +458,8 @@ export function createRoom(level: Level, anisotropy: number): THREE.Group {
       mesh(new THREE.ConeGeometry(0.22, 0.24, 20, 1, true), shade, x, 1.97, 0.5),
       mesh(ball(0.07, 12), new THREE.MeshBasicMaterial({ color: 0xfff1cf }), x, 1.89, 0.5),
     );
-    const lamp = new THREE.PointLight(0xffc885, 6, 7, 2);
+    // On the station the walls are pale hull plating, which these lamps used to wash out to white.
+    const lamp = new THREE.PointLight(0xffc885, plan?.space ? 2.6 : 6, 7, 2);
     lamp.position.set(x, 1.75, 0.85);
     room.add(lamp);
   }
@@ -778,6 +799,8 @@ export interface Stations {
   serveCentre: THREE.Vector3;
   // Shared belt texture, scrolled each frame.
   beltMap: THREE.CanvasTexture;
+  // Teleport pads, animated by the scene.
+  pads: THREE.Group[];
 }
 
 // Draws every solid tile as a KayKit counter or stove, then dresses each station on top.
@@ -803,9 +826,10 @@ export function createStations(level: Level): Stations {
   const serveCentre = new THREE.Vector3();
   let serveTiles = 0;
   let plants = 0;
+  const pads: THREE.Group[] = [];
   const counters: Array<{ x: number; z: number; turn: number }> = [];
   const isFloor = (tx: number, tz: number) =>
-    tx >= 0 && tz >= 0 && tx < level.width && tz < level.height && level.tiles[tz * level.width + tx].kind === "floor";
+    tx >= 0 && tz >= 0 && tx < level.width && tz < level.height && walkable(level.tiles[tz * level.width + tx]);
 
   const servePad = new THREE.MeshStandardMaterial({
     map: servePadTexture(),
@@ -822,6 +846,11 @@ export function createStations(level: Level): Stations {
 
   level.tiles.forEach((tile, index) => {
     if (tile.kind === "floor") return;
+    if (tile.kind === "warp") {
+      pads.push(createPad(tile.pair ?? 1, (index % level.width) + 0.5, Math.floor(index / level.width) + 0.5));
+      unshadowed.add(pads.at(-1)!);
+      return;
+    }
     const tx = index % level.width;
     const tz = Math.floor(index / level.width);
     const x = tx + 0.5;
@@ -1002,10 +1031,12 @@ export function createStations(level: Level): Stations {
   const turned = new THREE.Quaternion();
   const up = new THREE.Vector3(0, 1, 0);
   const sea = level.theme === "sea";
-  const size = sea ? new THREE.Vector3(1, 1, 1) : new THREE.Vector3(MODEL_SCALE, MODEL_SCALE, MODEL_SCALE);
-  const parts = sea
-    ? (createSeaCounter().children as THREE.Mesh[]).map((part) => [part.geometry, part.material as THREE.Material] as const)
-    : [[modelGeometry("kitchencounter_straight_A"), modelMaterial()] as const];
+  const space = level.theme === "space";
+  const size = sea || space ? new THREE.Vector3(1, 1, 1) : new THREE.Vector3(MODEL_SCALE, MODEL_SCALE, MODEL_SCALE);
+  const parts =
+    sea || space
+      ? ((sea ? createSeaCounter() : createSpaceCounter()).children as THREE.Mesh[]).map((part) => [part.geometry, part.material as THREE.Material] as const)
+      : [[modelGeometry("kitchencounter_straight_A"), modelMaterial()] as const];
   for (const [geometry, material] of parts) {
     const instanced = new THREE.InstancedMesh(geometry, material, counters.length);
     counters.forEach(({ x, z, turn }, i) => {
@@ -1015,7 +1046,51 @@ export function createStations(level: Level): Stations {
   }
   shadowed(group);
   group.add(labels, unshadowed);
-  return { group, flames, serveCentre, plateStack, dirtyPile, sinkDirty, sinkClean, washTile, beltMap };
+  return { group, flames, serveCentre, plateStack, dirtyPile, sinkDirty, sinkClean, washTile, beltMap, pads };
+}
+
+// Each pair of teleport pads has its own colour, so players can see which pad leads where.
+export const PAD_COLOURS = [0x9b7bff, 0x3fd6e8, 0xffb03a];
+
+// A teleport pad set into the floor: a steel rim, a glowing disc in the pair's colour and a ring that hovers above it.
+function createPad(pair: number, x: number, z: number): THREE.Group {
+  const colour = PAD_COLOURS[(pair - 1) % PAD_COLOURS.length];
+  const pad = new THREE.Group();
+  // Brighter than white, so the polished render path's bloom makes the pads glow.
+  const glow = new THREE.MeshBasicMaterial({ color: new THREE.Color(colour).multiplyScalar(1.15), transparent: true, opacity: 0.85 });
+  pad.add(
+    mesh(cylinder(0.46, 0.48, 0.04, 32), mat(COLORS.darkSteel, 0.4, 0.6), 0, 0.02, 0),
+    mesh(cylinder(0.36, 0.36, 0.045, 32), glow, 0, 0.025, 0),
+  );
+  // Three little ticks on the disc point inwards, like a target to step on.
+  for (let i = 0; i < 3; i++) {
+    const tick = mesh(box(0.06, 0.02, 0.16), new THREE.MeshBasicMaterial({ color: 0xffffff }), 0, 0.05, 0);
+    const angle = (i / 3) * Math.PI * 2;
+    tick.position.set(Math.sin(angle) * 0.24, 0.05, Math.cos(angle) * 0.24);
+    tick.rotation.y = angle;
+    pad.add(tick);
+  }
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(0.34, 0.025, 8, 40),
+    new THREE.MeshBasicMaterial({ color: colour, transparent: true, opacity: 0.7, depthWrite: false }),
+  );
+  ring.rotation.x = Math.PI / 2;
+  pad.add(ring);
+  pad.position.set(x, 0, z);
+  pad.userData = { ring, glow, pair };
+  return pad;
+}
+
+// Pads pulse gently, and their rings rise and fade like a beam waiting for someone to step in.
+export function animatePads(stations: Stations, time: number): void {
+  stations.pads.forEach((pad, i) => {
+    const { ring, glow } = pad.userData as { ring: THREE.Mesh<THREE.TorusGeometry, THREE.MeshBasicMaterial>; glow: THREE.MeshBasicMaterial };
+    const phase = (time * 0.8 + i * 0.37) % 1;
+    ring.position.y = 0.06 + phase * 0.9;
+    ring.material.opacity = 0.75 * (1 - phase);
+    ring.scale.setScalar(1 - phase * 0.25);
+    glow.opacity = 0.7 + Math.sin(time * 4 + i) * 0.15;
+  });
 }
 
 // Every belt shares one texture, so scrolling it once moves them all.

@@ -68,4 +68,5 @@ const IDLE_POSE: PlayerState = {
   spraying: false,
   dashTime: 0,
   dashCooldown: 0,
+  onPad: -1,
 };

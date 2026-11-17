@@ -22,6 +22,8 @@ interface Heard {
   fires: number;
   // The number showing in the 3-2-1 before a round, or 0.
   count: number;
+  // The teleport pad the local chef is standing on, or -1.
+  pad: number;
 }
 
 const describe = (item: Item | null): string => (item ? JSON.stringify(item, (key, value) => (key === "chop" || key === "cook" ? undefined : value)) : "");
@@ -198,6 +200,7 @@ export function createSound(): Sound {
         dashing: (me?.dashTime ?? 0) > 0,
         fires: Object.keys(state.fires ?? {}).length,
         count: state.phase === "ready" && state.countdown != null ? Math.ceil(state.countdown) : 0,
+        pad: me?.onPad ?? -1,
       };
       const before = heard;
       heard = now;
@@ -219,6 +222,8 @@ export function createSound(): Sound {
         noise(0.14, 0.12, 1100);
       }
       if (now.dashing && !before.dashing) noise(0.16, 0.14, 900);
+      // A rising "bwoop" as the local chef beams across on a teleport pad.
+      if (now.pad >= 0 && now.pad !== before.pad) tone(300, 1400, 0.22, "sine", 0.1);
       // A two-tone alarm for each new fire, a hiss while spraying and a soft chime when the last one is out.
       if (now.fires > before.fires) notes([740, 554, 740, 554], 0.13, "square", 0.07);
       else if (now.fires === 0 && before.fires > 0) notes([523, 659, 784], 0.09, "sine", 0.08);

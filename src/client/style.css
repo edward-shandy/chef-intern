@@ -2687,3 +2687,56 @@ html {
     transform: scale(0.7);
   }
 }
+
+.level-tag-warp {
+  color: #3f2a9e;
+  background: #e4ddff;
+}
+
+/* Teleport and zero-gravity pictures in the briefing. */
+.ill-warp-out {
+  animation: ill-warp-out 2.4s ease-in-out infinite;
+}
+
+.ill-warp-in {
+  animation: ill-warp-in 2.4s ease-in-out infinite;
+}
+
+.ill-beam,
+.ill-sparkle {
+  animation: ill-beam 2.4s ease-in-out infinite;
+}
+
+.ill-drift {
+  animation: ill-drift 3s ease-in-out infinite alternate;
+}
+
+.ill-bob {
+  animation: ill-bob 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes ill-warp-out {
+  0%, 30% { opacity: 1; }
+  45%, 100% { opacity: 0; }
+}
+
+@keyframes ill-warp-in {
+  0%, 45% { opacity: 0; }
+  60%, 95% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes ill-beam {
+  0%, 25%, 70%, 100% { opacity: 0; }
+  40%, 55% { opacity: 1; }
+}
+
+@keyframes ill-drift {
+  from { transform: translateX(-40px); }
+  to { transform: translateX(40px); }
+}
+
+@keyframes ill-bob {
+  from { transform: translateY(0); }
+  to { transform: translateY(-12px); }
+}

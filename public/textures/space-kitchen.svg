@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Orbit Diner galley floor: light steel tread plates in a checker, with grip studs. -->
+  <defs>
+    <pattern id="tread" width="128" height="128" patternUnits="userSpaceOnUse">
+      <rect width="128" height="128" fill="#8f99ad"/>
+      <rect x="2" y="2" width="60" height="60" rx="4" fill="#dfe5ee"/>
+      <rect x="66" y="2" width="60" height="60" rx="4" fill="#c6cfdc"/>
+      <rect x="2" y="66" width="60" height="60" rx="4" fill="#c6cfdc"/>
+      <rect x="66" y="66" width="60" height="60" rx="4" fill="#dfe5ee"/>
+      <g stroke="#a8b2c4" stroke-width="3" stroke-linecap="round">
+        <path d="M14 20l10-6M34 20l10-6M14 40l10-6M34 40l10-6M84 84l10-6M104 84l10-6M84 104l10-6M104 104l10-6"/>
+        <path d="M78 14l10 6M98 14l10 6M78 34l10 6M98 34l10 6M14 78l10 6M34 78l10 6M14 98l10 6M34 98l10 6"/>
+      </g>
+    </pattern>
+  </defs>
+  <rect width="512" height="512" fill="url(#tread)"/>
+</svg>

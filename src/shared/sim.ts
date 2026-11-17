@@ -1,4 +1,4 @@
-import { beltNext, burns, holdsItems, isFixture, LEVELS, nextLevel, tileAt, type Level } from "./level";
+import { beltNext, burns, holdsItems, isFixture, LEVELS, nextLevel, tileAt, walkable, warpDestination, type Level } from "./level";
 import { isCharacter, seatCharacter, type CharacterId } from "./characters";
 import { isSoup, PREP, RECIPES, ROAST_OF, SOUP_OF, type DishPart, type Ingredient, type RecipeId } from "./recipes";
 
@@ -16,6 +16,7 @@ export const SPRAY_RANGE = 2.4;
 
 const PLAYER_SPEED = 4.6;
 const PLAYER_ACCEL = 16;
+const LOW_GRAVITY_ACCEL = 3.2;
 const DASH_SPEED = 11.5;
 const DASH_SECONDS = 0.22;
 const DASH_COOLDOWN = 0.8;
@@ -97,6 +98,8 @@ export interface PlayerState {
   // Seconds of dash left, and seconds until the next dash is allowed.
   dashTime: number;
   dashCooldown: number;
+  // The teleport pad this chef is standing on, or -1; a pad only fires again once they have stepped off it.
+  onPad: number;
 }
 
 export interface GameState {
@@ -240,6 +243,7 @@ export function addPlayer(state: GameState, id: number, name = "", character: Ch
     spraying: false,
     dashTime: 0,
     dashCooldown: 0,
+    onPad: -1,
   });
 }
 
@@ -250,7 +254,7 @@ export function removePlayer(state: GameState, id: number): void {
 // True when the tile is a station close enough for this chef to use by pointing at it.
 export function inReach(level: Level, player: PlayerState, tile: number): boolean {
   const target = level.tiles[tile];
-  if (!target || target.kind === "floor" || isFixture(target)) return false;
+  if (!target || walkable(target) || isFixture(target)) return false;
   const tx = tile % level.width;
   const tz = Math.floor(tile / level.width);
   const dx = player.x - Math.max(tx, Math.min(player.x, tx + 1));
@@ -264,7 +268,7 @@ export function targetTile(level: Level, player: PlayerState, aim: number | null
   const tx = Math.floor(player.x + Math.sin(player.facing) * REACH);
   const tz = Math.floor(player.z + Math.cos(player.facing) * REACH);
   const tile = tileAt(level, tx, tz);
-  return tile && tile.kind !== "floor" && !isFixture(tile) ? tz * level.width + tx : null;
+  return tile && !walkable(tile) && !isFixture(tile) ? tz * level.width + tx : null;
 }
 
 // Seeded generator so the simulation stays reproducible from its state alone.
@@ -628,7 +632,7 @@ function resolveCollisions(level: Level, player: PlayerState): void {
   for (let tz = baseZ - 1; tz <= baseZ + 1; tz++) {
     for (let tx = baseX - 1; tx <= baseX + 1; tx++) {
       const tile = tileAt(level, tx, tz);
-      if (tile && tile.kind === "floor") continue;
+      if (tile && walkable(tile)) continue;
       const dx = player.x - Math.max(tx, Math.min(player.x, tx + 1));
       const dz = player.z - Math.max(tz, Math.min(player.z, tz + 1));
       const distance = Math.hypot(dx, dz);
@@ -660,7 +664,30 @@ function separatePlayers(players: PlayerState[]): void {
 }
 
 // Turns and accelerates one chef towards its input, without any collision handling.
-function movePlayer(player: PlayerState, input: PlayerInput, dt: number): void {
+// How quickly chefs reach their speed and stop again: brisk on the ground, a slow drift in zero gravity.
+const accelerationIn = (level: Level): number => (level.lowGravity ? LOW_GRAVITY_ACCEL : PLAYER_ACCEL);
+
+// Stepping onto a teleport pad moves the chef to its partner, keeping their speed so they glide off the far pad.
+function warpPlayer(level: Level, player: PlayerState): void {
+  const tx = Math.floor(player.x);
+  const tz = Math.floor(player.z);
+  const index = tz * level.width + tx;
+  if (tileAt(level, tx, tz)?.kind !== "warp") {
+    player.onPad = -1;
+    return;
+  }
+  if (player.onPad === index) return;
+  const destination = warpDestination(level, index);
+  if (destination === null) {
+    player.onPad = index;
+    return;
+  }
+  player.x = (destination % level.width) + 0.5;
+  player.z = Math.floor(destination / level.width) + 0.5;
+  player.onPad = destination;
+}
+
+function movePlayer(player: PlayerState, input: PlayerInput, dt: number, acceleration = PLAYER_ACCEL): void {
   let { moveX, moveZ } = input;
   const length = Math.hypot(moveX, moveZ);
   if (length > 1) {
@@ -683,7 +710,7 @@ function movePlayer(player: PlayerState, input: PlayerInput, dt: number): void {
     moveZ = Math.cos(player.facing);
   }
 
-  const blend = Math.min(1, PLAYER_ACCEL * dt);
+  const blend = Math.min(1, acceleration * dt);
   player.vx += (moveX * speed - player.vx) * blend;
   player.vz += (moveZ * speed - player.vz) * blend;
   player.x += player.vx * dt;
@@ -698,7 +725,7 @@ export function predictPlayer(
   others: PlayerState[],
   dt: number,
 ): void {
-  movePlayer(player, input, dt);
+  movePlayer(player, input, dt, accelerationIn(level));
   for (const other of others) {
     const dx = player.x - other.x;
     const dz = player.z - other.z;
@@ -709,6 +736,7 @@ export function predictPlayer(
     player.z += dz * push;
   }
   resolveCollisions(level, player);
+  warpPlayer(level, player);
 }
 
 // Advances the whole game by dt seconds; inputs are keyed by player id.
@@ -728,11 +756,12 @@ export function stepGame(state: GameState, inputs: Record<number, PlayerInput>, 
   state.targetSoFar += perSecond * played;
   state.target = Math.round((state.targetSoFar + perSecond * (state.timeLeft - played)) / 5) * 5;
 
-  for (const player of state.players) movePlayer(player, inputs[player.id] ?? IDLE_INPUT, dt);
+  for (const player of state.players) movePlayer(player, inputs[player.id] ?? IDLE_INPUT, dt, accelerationIn(level));
 
   separatePlayers(state.players);
   for (const player of state.players) {
     resolveCollisions(level, player);
+    warpPlayer(level, player);
     const input = inputs[player.id] ?? IDLE_INPUT;
     player.chopping = player.washing = player.spraying = false;
     if (input.interact) interact(level, state, player, input.aim);
