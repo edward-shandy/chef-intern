@@ -200,6 +200,26 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
     if (polished()) shake = Math.max(shake, amount);
   };
   let lastFires = 0;
+  // Adaptive quality: when frames run slow for a while, the most expensive effect left is switched off, then the
+  // resolution steps down. A slow frame also delays the game's network messages, so this keeps play responsive too.
+  // Frames longer than 50 ms are ignored: those are a hidden tab or a hiccup, not a slow device.
+  let frameAverage = 1 / 60;
+  let slowFor = 0;
+  let pixelRatio = renderer.getPixelRatio();
+  const adaptQuality = (dt: number) => {
+    if (dt > 0.05 || document.hidden) return;
+    frameAverage += (dt - frameAverage) * 0.05;
+    slowFor = frameAverage > 1 / 42 ? slowFor + dt : 0;
+    if (slowFor < 2) return;
+    slowFor = 0;
+    frameAverage = 1 / 60;
+    if (polish.enabled && polish.degrade()) return;
+    if (pixelRatio > 1) {
+      pixelRatio = Math.max(1, pixelRatio - 0.25);
+      renderer.setPixelRatio(pixelRatio);
+      resize();
+    }
+  };
   let chopBits = 0;
   // Night kitchens dim the daylight; these are the daytime values to return to.
   const daylight = { hemi: 0.38, key: 2.9, fill: 0.4, exposure: 0.92, env: 0.22 };
@@ -677,6 +697,7 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
           camera.position.y += (Math.random() - 0.5) * shake * 0.6;
           camera.position.z += (Math.random() - 0.5) * shake;
         }
+        adaptQuality(dt);
         polish.setEnabled(polished());
         if (polish.enabled) polish.render();
         else renderer.render(scene, camera);

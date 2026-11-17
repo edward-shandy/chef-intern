@@ -87,6 +87,8 @@ const OutlineGradeShader = {
 
 export interface Polish {
   readonly enabled: boolean;
+  // Drops the most expensive effect still on (ambient occlusion, then anti-aliasing); false when nothing is left to drop.
+  degrade(): boolean;
   setEnabled(on: boolean): void;
   setSize(width: number, height: number): void;
   render(): void;
@@ -136,6 +138,15 @@ export function createPolish(renderer: THREE.WebGLRenderer, scene: THREE.Scene, 
   return {
     get enabled() {
       return enabled;
+    },
+    degrade() {
+      for (const pass of [ao, smaa]) {
+        if (pass?.enabled) {
+          pass.enabled = false;
+          return true;
+        }
+      }
+      return false;
     },
     setEnabled(on) {
       enabled = on;

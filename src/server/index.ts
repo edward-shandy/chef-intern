@@ -47,6 +47,15 @@ interface Attachment {
 }
 
 const TICK_MS = 50;
+// An action (pick up, put down, dash) is simulated and sent back straight away instead of waiting for the next tick,
+// which saves up to a whole tick of delay; this caps how often a spamming client can force one.
+const EARLY_TICK_MS = 30;
+// Game-state fields only the server's simulation needs; clients never read them, so they are left out of snapshots.
+const SERVER_ONLY = new Set(["seed", "nextOrderId", "targetSoFar", "spreadIn", "beltIn", "nextOrderIn", "overFor", "returning"]);
+// Snapshots round every fraction to three decimals (timers, cook progress, positions), which is plenty for drawing
+// and keeps 17-digit floats like 0.09999999999999848 off the wire.
+const compact = (key: string, value: unknown): unknown =>
+  SERVER_ONLY.has(key) ? undefined : typeof value === "number" && !Number.isInteger(value) ? Math.round(value * 1000) / 1000 : value;
 const MAX_CATCH_UP_MS = 250;
 // How long a dropped player's chef waits in place for them to come back.
 const RESUME_GRACE_MS = 10_000;
@@ -54,7 +63,6 @@ const CID_PATTERN = /^[\w-]{8,64}$/;
 
 const clampAxis = (value: unknown): number =>
   typeof value === "number" && Number.isFinite(value) ? Math.max(-1, Math.min(1, value)) : 0;
-const round = (value: number): number => Math.round(value * 1000) / 1000;
 const tileOrNull = (value: unknown): number | null =>
   typeof value === "number" && Number.isInteger(value) && value >= 0 && value < 4096 ? value : null;
 
@@ -66,6 +74,7 @@ export class Room extends DurableObject<Env> {
   private timer: ReturnType<typeof setInterval> | null = null;
   private lastTick = 0;
   private pending = 0;
+  private lastEarly = 0;
   private nextConn = 1;
 
   constructor(ctx: DurableObjectState, env: Env) {
@@ -141,9 +150,11 @@ export class Room extends DurableObject<Env> {
       seat.input.aim = tileOrNull(message.aim);
       seat.seq = Number.isSafeInteger(message.seq) ? message.seq : seat.seq;
       seat.steps = 0;
+      if (seat.input.dash) this.tickNow();
     } else if (message.type === "interact") {
       seat.input.interact = true;
       seat.input.aim = tileOrNull(message.aim);
+      this.tickNow();
     } else if (message.type === "level") {
       chooseLevel(this.game, Number(message.level));
     } else if (message.type === "name") {
@@ -205,7 +216,17 @@ export class Room extends DurableObject<Env> {
     Object.assign(seat.input, IDLE_INPUT);
   }
 
-  private tick(): void {
+  // Runs a tick right now, with at least one simulation step, so an action's result goes out without waiting.
+  private tickNow(): void {
+    const now = Date.now();
+    if (this.timer === null || now - this.lastEarly < EARLY_TICK_MS) return;
+    this.lastEarly = now;
+    this.tick(true);
+  }
+
+  // `force` takes one step even if less than a step's worth of time has passed; the borrowed time is paid back
+  // by the following ticks, so the simulation clock stays in step with real time.
+  private tick(force = false): void {
     const now = Date.now();
     for (const [id, seat] of this.seats) {
       if (seat.goneAt === null || now - seat.goneAt < RESUME_GRACE_MS) continue;
@@ -223,7 +244,9 @@ export class Room extends DurableObject<Env> {
 
     this.pending += Math.min(now - this.lastTick || TICK_MS, MAX_CATCH_UP_MS) / 1000;
     this.lastTick = now;
-    while (this.pending >= SIM_STEP) {
+    let stepped = 0;
+    while (this.pending >= SIM_STEP || (force && stepped === 0)) {
+      stepped += 1;
       stepGame(this.game, this.inputs, SIM_STEP);
       for (const seat of this.seats.values()) {
         seat.input.interact = false;
@@ -235,19 +258,7 @@ export class Room extends DurableObject<Env> {
 
     const acks: Acks = {};
     for (const [id, seat] of this.seats) acks[id] = [seat.seq, seat.steps];
-    const payload = JSON.stringify({
-      ...this.game,
-      type: "state",
-      acks,
-      players: this.game.players.map((player) => ({
-        ...player,
-        x: round(player.x),
-        z: round(player.z),
-        vx: round(player.vx),
-        vz: round(player.vz),
-        facing: round(player.facing),
-      })),
-    } satisfies ServerMessage);
+    const payload = JSON.stringify({ ...this.game, type: "state", acks } satisfies ServerMessage, compact);
     for (const socket of this.ctx.getWebSockets()) {
       try {
         socket.send(payload);

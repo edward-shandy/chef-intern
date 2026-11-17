@@ -3,8 +3,9 @@ import type { Acks } from "../shared/protocol";
 import { IDLE_INPUT, predictPlayer, SIM_STEP, type GameState, type PlayerInput, type PlayerState } from "../shared/sim";
 
 const STEP_MS = SIM_STEP * 1000;
-// Other chefs are drawn this far in the past so there are always two snapshots to blend.
-const INTERPOLATION_DELAY_MS = 100;
+// Other chefs are drawn this far in the past so there are always two snapshots to blend: one 50 ms snapshot
+// interval plus a little slack for jitter. Kept short so teammates appear close to where they really are.
+const INTERPOLATION_DELAY_MS = 75;
 const MAX_SNAPSHOTS = 12;
 const MAX_REPLAY_STEPS = 90;
 // Corrections larger than this are a teleport, not drift, and are shown at once.
