@@ -16,6 +16,8 @@ export type TileKind =
   | "grill"
   // Conveyor belt: whatever rests on it is carried one tile along every BELT_SECONDS.
   | "belt"
+  // Teleport pad: a floor tile that sends a chef who steps on it to the other pad with the same number.
+  | "warp"
   // Wall bracket where the fire extinguisher starts each round, and the only station that can hold it besides a counter.
   | "extinguisher"
   // Fixtures that fill a cabinet slot but cannot be used: a sink, a fridge, or a counter with a pot plant on it.
@@ -54,6 +56,8 @@ export interface RoomDecor {
   street?: { side: "back"; season?: "spring" | "summer" | "autumn" | "winter" };
   // Evening service: the lights go down and the lanterns among the props glow.
   night?: boolean;
+  // A station in orbit: no street or lawn, just the deck floating among the stars above a planet.
+  space?: boolean;
   // Any other props, placed as they are.
   extras?: Array<{ model: string; x: number; z: number; turn?: number; scale?: number }>;
 }
@@ -63,6 +67,8 @@ export interface Tile {
   dispenses?: Ingredient;
   // Which way a belt carries its load, in tiles.
   dir?: [dx: number, dz: number];
+  // Which teleport pad this is paired with: pads sharing a number lead to each other.
+  pair?: number;
 }
 
 export interface Level {
@@ -84,6 +90,8 @@ export interface Level {
   difficulty: number;
   // Id of the theme this kitchen belongs to, which decides its surroundings and where it sits in the picker.
   theme: string;
+  // Zero gravity: chefs float and slide, speeding up and slowing down far more gently.
+  lowGravity?: boolean;
 }
 
 // Rules a kitchen adds on top of plain cooking.
@@ -92,6 +100,7 @@ export interface LevelRules {
   fire?: boolean;
   difficulty?: number;
   theme?: string;
+  lowGravity?: boolean;
 }
 
 // One character per tile; S is a floor tile that also marks a spawn point.
@@ -113,6 +122,9 @@ const LEGEND: Record<string, Tile> = {
   v: { kind: "belt", dir: [0, 1] },
   "<": { kind: "belt", dir: [-1, 0] },
   ">": { kind: "belt", dir: [1, 0] },
+  "1": { kind: "warp", pair: 1 },
+  "2": { kind: "warp", pair: 2 },
+  "3": { kind: "warp", pair: 3 },
   X: { kind: "trash" },
   B: { kind: "board" },
   O: { kind: "stove" },
@@ -154,6 +166,17 @@ export function tileAt(level: Level, tx: number, tz: number): Tile | null {
   return level.tiles[tz * level.width + tx];
 }
 
+// Tiles a chef can stand on: the floor and the teleport pads set into it.
+export const walkable = (tile: Tile): boolean => tile.kind === "floor" || tile.kind === "warp";
+
+// The other pad a teleport pad leads to, or null if it has no partner.
+export function warpDestination(level: Level, index: number): number | null {
+  const pair = level.tiles[index]?.pair;
+  if (level.tiles[index]?.kind !== "warp" || pair === undefined) return null;
+  const other = level.tiles.findIndex((tile, i) => i !== index && tile.kind === "warp" && tile.pair === pair);
+  return other >= 0 ? other : null;
+}
+
 // Fixtures block the way like any counter but are never a target for the chef's hands.
 export const isFixture = (tile: Tile): boolean => tile.kind === "sink" || tile.kind === "fridge" || tile.kind === "plant";
 
@@ -172,6 +195,65 @@ export function beltNext(level: Level, index: number): number | null {
   const tz = Math.floor(index / level.width) + tile.dir[1];
   return tileAt(level, tx, tz)?.kind === "belt" ? tz * level.width + tx : null;
 }
+
+// The orbital diner around the space kitchens: porthole walls, alien guests at floating tables, rockets and
+// hydroponic pods, on a deck hanging in space (see scripts/make_space_props.mjs and src/client/space.ts).
+const SPACE_DECOR: Decor = {
+  sink: "sink_industrial",
+  fridge: "fridge_pro",
+  plants: ["space_hydro"],
+  room: {
+    backWall: Array.from({ length: 7 }, (_, i) => (i % 2 ? "space_wall_porthole" : "space_wall_panel")),
+    outerWall: "space_wall_panel",
+    sideWalls: ["space_wall_porthole", "space_wall_panel"],
+    margin: 6,
+    space: true,
+    night: true,
+    floor: "/textures/space-deck.svg",
+    kitchenFloor: "/textures/space-kitchen.svg",
+    tables: [
+      { model: "space_table", x: -3.4, z: 1.8, guests: ["guest_alien_green", "guest_alien_violet"] },
+      { model: "space_table", x: -3.4, z: 5.6, guests: ["guest_alien_violet", ""] },
+      { model: "space_table", x: 16.4, z: 1.8, guests: ["", "guest_alien_green"] },
+      { model: "space_table", x: 16.4, z: 5.6, guests: ["guest_alien_green", "guest_alien_violet"] },
+      { model: "space_booth", x: -3.4, z: 8.2, guests: ["guest_alien_green", ""] },
+      { model: "space_booth", x: 16.4, z: 8.2, guests: ["guest_alien_violet", "guest_alien_green"] },
+    ],
+    plants: [
+      { model: "space_hydro", x: -5.6, z: 0.6 },
+      { model: "space_hydro", x: 18.6, z: 0.6 },
+    ],
+    extras: [
+      { model: "space_rocket", x: -5.2, z: 9 },
+      { model: "space_rocket", x: 18.2, z: 9, turn: Math.PI },
+      { model: "space_beacon", x: -0.7, z: 10 },
+      { model: "space_beacon", x: 13.7, z: 10 },
+      // Rugs under the aisles, wall clocks on the back wall, and a jukebox, vending machine, sign and crates down each side.
+      { model: "space_rug", x: -3.4, z: 3.7 },
+      { model: "space_rug", x: 16.4, z: 3.7 },
+      { model: "space_clock", x: -3.4, z: 0.3 },
+      { model: "space_clock", x: 16.4, z: 0.3 },
+      { model: "space_jukebox", x: -5.8, z: 3.7, turn: Math.PI / 2 },
+      { model: "space_vending", x: -5.8, z: 7, turn: Math.PI / 2 },
+      { model: "space_crates", x: -5.4, z: 5.3, turn: Math.PI / 2 },
+      { model: "space_vending", x: 18.8, z: 3.7, turn: -Math.PI / 2 },
+      { model: "space_jukebox", x: 18.8, z: 7, turn: -Math.PI / 2 },
+      { model: "space_neon_sign", x: 18.4, z: 5.4, turn: -Math.PI / 2 },
+      { model: "space_planet_lamp", x: -1.2, z: 3.7 },
+      { model: "space_planet_lamp", x: 14.2, z: 3.7 },
+      { model: "space_telescope", x: -1.4, z: 7.7 },
+      { model: "space_telescope", x: 14.4, z: 7.7, turn: Math.PI },
+      // The front strip, kept clear of the doors.
+      { model: "space_holo_menu", x: -3.8, z: 10.5 },
+      { model: "space_dessert_case", x: -2.0, z: 10.8 },
+      { model: "space_crates", x: 6.6, z: 10.8 },
+      { model: "space_robot", x: 7.9, z: 10.7 },
+      { model: "space_neon_sign", x: 11.8, z: 10.8 },
+      { model: "space_dessert_case", x: 15.4, z: 10.8 },
+      { model: "space_holo_menu", x: 17.0, z: 10.5 },
+    ],
+  },
+};
 
 // Clearing one kitchen unlocks the next; they must all share one size, which the camera is framed for.
 export const LEVELS: Level[] = [
@@ -533,6 +615,46 @@ export const LEVELS: Level[] = [
     ],
     { theme: "sea", plates: 4, difficulty: 3 },
   ),
+  // Orbit Diner opens with a station module cut in two by a bulkhead: prep on the left, hobs and the pass on the
+  // right, and one pair of teleport pads in the middle as the only way across. The bulkhead's worktop can hand food over.
+  parseLevel(
+    "Docking Bay",
+    300,
+    ["lettuce_salad", "salad", "soup"],
+    SPACE_DECOR,
+    [
+      "V#T#L#####P#V",
+      "#S....#....S#",
+      "B.....#.....O",
+      "B..1..#..1..O",
+      "#.....#.....#",
+      "#.....#.....W",
+      "#.....#.....W",
+      "#S....#....S#",
+      "V##X########V",
+    ],
+    { theme: "space", difficulty: 2 },
+  ),
+  // Three modules with no doors between them, joined only by three pairs of pads, and no gravity: chefs float and
+  // drift, so every turn and stop has to be started early. Four plates go round the wash-up in the right module.
+  parseLevel(
+    "Zero-G Galley",
+    360,
+    ["salad", "soup", "onion_soup", "roast_chicken", "chicken_salad"],
+    SPACE_DECOR,
+    [
+      "VTLN#OOG#P#RV",
+      "#S..#...#..S#",
+      "B.1.#.2.#...#",
+      "B...#...#.3.W",
+      "#...#...#...W",
+      "C...#...#...#",
+      "#.2.#.3.#.1.Q",
+      "#S..#...#..S#",
+      "V#X##E###X##V",
+    ],
+    { theme: "space", plates: 4, difficulty: 4, lowGravity: true },
+  ),
 ];
 
 // Kitchens are grouped into themes; each theme is played through on its own, starting from its first kitchen.
@@ -545,6 +667,7 @@ export interface Theme {
 export const THEMES: Theme[] = [
   { id: "town", name: "Town Bistro", blurb: "A restaurant on a busy street" },
   { id: "sea", name: "Deep Sea Diner", blurb: "A kitchen on the sea floor" },
+  { id: "space", name: "Orbit Diner", blurb: "A diner on a space station above a blue planet" },
 ];
 
 // Indices into LEVELS of one theme's kitchens, in play order.
@@ -558,4 +681,11 @@ export const levelNumber = (index: number): number => themeLevels(LEVELS[index].
 export function nextLevel(index: number): number {
   const mates = themeLevels(LEVELS[index].theme);
   return mates[(mates.indexOf(index) + 1) % mates.length];
+}
+
+// The kitchen before this one in its theme, or null for a theme's first kitchen.
+export function previousLevel(index: number): number | null {
+  const mates = themeLevels(LEVELS[index].theme);
+  const at = mates.indexOf(index);
+  return at > 0 ? mates[at - 1] : null;
 }

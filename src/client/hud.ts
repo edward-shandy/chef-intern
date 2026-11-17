@@ -47,6 +47,7 @@ export const SEATS = [
 const THEME_ART: Record<string, string> = {
   town: `<svg viewBox="0 0 160 72" aria-hidden="true"><rect width="160" height="72" fill="#bfe6f2"/><circle cx="134" cy="14" r="8" fill="#ffe27a"/><rect x="6" y="18" width="34" height="34" fill="#f2c96b"/><rect x="40" y="10" width="30" height="42" fill="#7fb7c9"/><rect x="70" y="20" width="40" height="32" fill="#f4dcc0"/><rect x="110" y="14" width="30" height="38" fill="#c9b3dc"/><g fill="#fff8ea"><rect x="12" y="24" width="8" height="8"/><rect x="26" y="24" width="8" height="8"/><rect x="46" y="16" width="7" height="8"/><rect x="58" y="16" width="7" height="8"/><rect x="46" y="29" width="7" height="8"/><rect x="58" y="29" width="7" height="8"/><rect x="116" y="20" width="7" height="8"/><rect x="128" y="20" width="7" height="8"/></g><path d="M6 38h34v6H6z" fill="#e4573d"/><path d="M70 36h40v6H70z" fill="#f29bb5"/><path d="M110 38h30v6h-30z" fill="#8b689c"/><path d="M40 40h30v6H40z" fill="#2f7f86"/><rect y="52" width="160" height="6" fill="#d6cdbb"/><rect y="58" width="160" height="14" fill="#4d505c"/><path d="M4 65h14m10 0h14m10 0h14m10 0h14m10 0h14m10 0h14" stroke="#f2cf63" stroke-width="2"/><rect x="146" y="40" width="3" height="12" fill="#8a5a3c"/><circle cx="147" cy="36" r="9" fill="#5fae4e"/><rect x="84" y="59" width="24" height="8" rx="3" fill="#f2c230"/><rect x="89" y="55" width="13" height="6" rx="2" fill="#f2c230"/><circle cx="89" cy="68" r="3" fill="#2a2c33"/><circle cx="103" cy="68" r="3" fill="#2a2c33"/></svg>`,
   sea: `<svg viewBox="0 0 160 72" aria-hidden="true"><defs><linearGradient id="sea-art" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2aa3c4"/><stop offset="1" stop-color="#0e5672"/></linearGradient></defs><rect width="160" height="72" fill="url(#sea-art)"/><path d="M20 0l14 50M70 0l8 46M118 0l-10 52" stroke="#ffffff" stroke-opacity=".12" stroke-width="7"/><path d="M0 58c26-6 52 4 80 0s54-6 80-1v15H0z" fill="#e6d3a0"/><path d="M20 60c-2-10 3-14 0-24m6 24c2-12-4-16 1-28" stroke="#3f9d57" stroke-width="4" fill="none" stroke-linecap="round"/><path d="M132 60V44m0 6l-8-8m8 4l8-9" stroke="#f27aa0" stroke-width="4" stroke-linecap="round" fill="none"/><circle cx="110" cy="58" r="8" fill="#b58ae0"/><path d="M52 60l3-7 3 7-7-4h8z" fill="#f0803a"/><g><ellipse cx="62" cy="26" rx="11" ry="7" fill="#ff8a3d"/><path d="M51 26l-9-6v12z" fill="#fff"/><rect x="60" y="19" width="4" height="14" fill="#fff"/><circle cx="68" cy="24" r="1.800" fill="#1c1c28"/></g><g><ellipse cx="104" cy="36" rx="8" ry="5" fill="#ffd166"/><path d="M112 36l7-5v10z" fill="#2f7f86"/><circle cx="100" cy="35" r="1.400" fill="#1c1c28"/></g><g fill="#cdf3ff" fill-opacity=".7"><circle cx="36" cy="30" r="3"/><circle cx="40" cy="18" r="2"/><circle cx="34" cy="10" r="1.500"/><circle cx="142" cy="24" r="2.500"/><circle cx="146" cy="12" r="1.500"/></g><path d="M84 12c0-6 14-6 14 0z" fill="#f7a8d8"/><path d="M87 12v8m4-8v10m4-10v7" stroke="#f7a8d8" stroke-width="1.500"/></svg>`,
+  space: `<svg viewBox="0 0 160 72" aria-hidden="true"><rect width="160" height="72" fill="#141a33"/><g fill="#fff"><circle cx="0" cy="0" r="1.4" opacity="0.50"/><circle cx="53" cy="29" r="0.8" opacity="0.75"/><circle cx="106" cy="58" r="0.8" opacity="1.00"/><circle cx="159" cy="15" r="0.8" opacity="0.50"/><circle cx="52" cy="44" r="1.4" opacity="0.75"/><circle cx="105" cy="1" r="0.8" opacity="1.00"/><circle cx="158" cy="30" r="0.8" opacity="0.50"/><circle cx="51" cy="59" r="0.8" opacity="0.75"/><circle cx="104" cy="16" r="1.4" opacity="1.00"/><circle cx="157" cy="45" r="0.8" opacity="0.50"/><circle cx="50" cy="2" r="0.8" opacity="0.75"/><circle cx="103" cy="31" r="0.8" opacity="1.00"/><circle cx="156" cy="60" r="1.4" opacity="0.50"/><circle cx="49" cy="17" r="0.8" opacity="0.75"/><circle cx="102" cy="46" r="0.8" opacity="1.00"/><circle cx="155" cy="3" r="0.8" opacity="0.50"/><circle cx="48" cy="32" r="1.4" opacity="0.75"/><circle cx="101" cy="61" r="0.8" opacity="1.00"/><circle cx="154" cy="18" r="0.8" opacity="0.50"/><circle cx="47" cy="47" r="0.8" opacity="0.75"/><circle cx="100" cy="4" r="1.4" opacity="1.00"/><circle cx="153" cy="33" r="0.8" opacity="0.50"/><circle cx="46" cy="62" r="0.8" opacity="0.75"/><circle cx="99" cy="19" r="0.8" opacity="1.00"/><circle cx="152" cy="48" r="1.4" opacity="0.50"/><circle cx="45" cy="5" r="0.8" opacity="0.75"/></g><circle cx="30" cy="84" r="44" fill="#3d8fe4"/><path d="M-4 62c14-6 26 2 38-2s22-10 34-4" fill="none" stroke="#7ccf4f" stroke-width="7" stroke-linecap="round" opacity=".8"/><circle cx="136" cy="14" r="6" fill="#d9dce4"/><circle cx="134" cy="12" r="1.600" fill="#b9bcc6"/><rect x="66" y="24" width="72" height="26" rx="13" fill="#d9e2ee" stroke="#241d30" stroke-width="2"/><rect x="52" y="32" width="14" height="10" fill="#8a93a6" stroke="#241d30" stroke-width="2"/><path d="M34 28h18v26H34z" fill="#3d8fe4" stroke="#241d30" stroke-width="2"/><path d="M40 28v26M46 28v26" stroke="#a9dcff" stroke-width="1.500"/><g fill="#ffd166" stroke="#241d30" stroke-width="1.600"><circle cx="80" cy="37" r="5"/><circle cx="96" cy="37" r="5"/><circle cx="112" cy="37" r="5"/><circle cx="128" cy="37" r="5"/></g><path d="M78 50h52" stroke="#7a5cff" stroke-width="3" stroke-linecap="round"/><g transform="translate(124 60) rotate(-30)"><path d="M0-12c5 4 6 12 4 18H-4c-2-6-1-14 4-18z" fill="#fff" stroke="#241d30" stroke-width="1.600"/><circle cy="-3" r="2.500" fill="#3d8fe4"/><path d="M-4 3l-4 5 4-1zM4 3l4 5-4-1z" fill="#d2411f"/><path d="M-2 6c0 5 2 7 2 9 0-2 2-4 2-9z" fill="#ffb03a"/></g></svg>`,
 };
 
 // Colours of the little floor plan on each kitchen card.
@@ -67,6 +68,7 @@ const PLAN_COLOURS: Record<Tile["kind"], string> = {
   plant: "#4f9d4a",
   grill: "#c9552a",
   belt: "#25212b",
+  warp: "#7a5cff",
 };
 const CRATE_COLOURS = {
   tomato: "#e23b2e",
@@ -87,12 +89,21 @@ export function floorPlan(level: Level): string {
     const y = Math.floor(index / level.width);
     const fill = tile.dispenses ? CRATE_COLOURS[tile.dispenses] : PLAN_COLOURS[tile.kind];
     const inset = tile.kind === "floor" ? 0 : 0.06;
+    // Teleport pads are drawn as round glowing dots on the floor.
+    if (tile.kind === "warp") return `<circle cx="${x + 0.5}" cy="${y + 0.5}" r="0.38" fill="${fill}"/>`;
     return `<rect x="${x + inset}" y="${y + inset}" width="${1 - inset * 2}" height="${1 - inset * 2}" rx="${inset ? 0.18 : 0}" fill="${fill}"/>`;
   });
   return `<svg viewBox="0 0 ${level.width} ${level.height}" aria-hidden="true"><rect width="${level.width}" height="${level.height}" fill="#f4ecdc"/>${tiles.join("")}</svg>`;
 }
 
-const TAG_STYLES: Record<string, string> = { Fire: "fire", "Dish washing": "wash", Grill: "grill", Conveyor: "belt" };
+const TAG_STYLES: Record<string, string> = {
+  Fire: "fire",
+  "Dish washing": "wash",
+  Grill: "grill",
+  Conveyor: "belt",
+  Teleport: "warp",
+  "Zero gravity": "warp",
+};
 
 // What sets a kitchen apart, as short tags.
 function levelTags(level: Level): string[] {
@@ -101,6 +112,8 @@ function levelTags(level: Level): string[] {
   if (level.fire) tags.push("Fire");
   if (level.tiles.some((tile) => tile.kind === "grill")) tags.push("Grill");
   if (level.tiles.some((tile) => tile.kind === "belt")) tags.push("Conveyor");
+  if (level.tiles.some((tile) => tile.kind === "warp")) tags.push("Teleport");
+  if (level.lowGravity) tags.push("Zero gravity");
   return tags;
 }
 

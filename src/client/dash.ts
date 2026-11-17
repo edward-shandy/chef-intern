@@ -27,6 +27,10 @@ interface Streak {
 
 export interface DashFx {
   update(players: PlayerState[], dt: number): void;
+  // A puff of glowing sparkles, where a chef vanishes into a teleport pad and where they pop out.
+  sparkle(x: number, z: number, colour: number): void;
+  // A fountain of little bits at any height: confetti at the pass, scraps flying off a chopping board.
+  burst(x: number, y: number, z: number, colours: number[], count: number, speed: number, size: number): void;
 }
 
 export function createDashFx(parent: THREE.Object3D): DashFx {
@@ -50,12 +54,14 @@ export function createDashFx(parent: THREE.Object3D): DashFx {
   });
 
   let next = 0;
-  const spawn = (x: number, z: number, vx: number, vz: number, size: number, life = PUFF_LIFE) => {
+  const spawn = (x: number, z: number, vx: number, vz: number, size: number, life = PUFF_LIFE, colour = 0xf4ede2, y = 0.1, vy = 0.5 + Math.random() * 0.3) => {
     const puff = puffs[next++ % POOL];
-    puff.mesh.position.set(x, 0.1, z);
+    puff.mesh.material.color.setHex(colour);
+    puff.mesh.material.emissive.setHex(colour === 0xf4ede2 ? 0x000000 : colour);
+    puff.mesh.position.set(x, y, z);
     puff.mesh.rotation.set(Math.random() * 6, Math.random() * 6, 0);
     puff.mesh.visible = true;
-    Object.assign(puff, { age: 0, life, vx, vy: 0.5 + Math.random() * 0.3, vz, size });
+    Object.assign(puff, { age: 0, life, vx, vy, vz, size });
   };
   let nextStreak = 0;
   const streak = (player: PlayerState, back: number, side: number) => {
@@ -72,6 +78,19 @@ export function createDashFx(parent: THREE.Object3D): DashFx {
   const dashing = new Map<number, { was: boolean; trail: number }>();
 
   return {
+    burst(x, y, z, colours, count, speed, size) {
+      for (let i = 0; i < count; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const out = speed * (0.4 + Math.random() * 0.6);
+        spawn(x, z, Math.sin(angle) * out, Math.cos(angle) * out, size * (0.6 + Math.random() * 0.6), 0.6, colours[i % colours.length], y, speed * (1 + Math.random()));
+      }
+    },
+    sparkle(x, z, colour) {
+      for (let i = 0; i < 10; i++) {
+        const angle = (i / 10) * Math.PI * 2;
+        spawn(x + Math.sin(angle) * 0.2, z + Math.cos(angle) * 0.2, Math.sin(angle) * 0.8, Math.cos(angle) * 0.8, 0.55, 0.55, colour);
+      }
+    },
     update(players, dt) {
       for (const player of players) {
         let mark = dashing.get(player.id);

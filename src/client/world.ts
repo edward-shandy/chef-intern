@@ -96,6 +96,8 @@ export function createClientWorld(): ClientWorld {
     const b = newer?.state.players.find((other) => other.id === player.id);
     if (!a || !b) return a ? { ...player, x: a.x, z: a.z } : player;
     const t = (renderTime - older!.at) / (newer!.at - older!.at);
+    // A chef who stepped on a teleport pad jumps; sliding them across the kitchen in between would look wrong.
+    if (Math.hypot(b.x - a.x, b.z - a.z) > SNAP_DISTANCE) return { ...player, ...(t < 0.5 ? { x: a.x, z: a.z } : { x: b.x, z: b.z }) };
     return { ...player, x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t, facing: t < 0.5 ? a.facing : b.facing };
   };
 

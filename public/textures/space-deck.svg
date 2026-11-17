@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Orbit Diner dining deck: dark hull plates with rounded corners, rivets and a faint cyan glow in the seams. -->
+  <defs>
+    <pattern id="plates" width="128" height="128" patternUnits="userSpaceOnUse">
+      <rect width="128" height="128" fill="#1d2440"/>
+      <rect x="3" y="3" width="122" height="122" rx="10" fill="#2a3358" stroke="#3fd6e8" stroke-opacity=".28" stroke-width="2"/>
+      <rect x="14" y="14" width="100" height="100" rx="6" fill="none" stroke="#3a4570" stroke-width="2"/>
+      <g fill="#4a5585"><circle cx="12" cy="12" r="3"/><circle cx="116" cy="12" r="3"/><circle cx="12" cy="116" r="3"/><circle cx="116" cy="116" r="3"/></g>
+      <path d="M40 64h48M64 40v48" stroke="#323c66" stroke-width="3" stroke-linecap="round"/>
+    </pattern>
+  </defs>
+  <rect width="512" height="512" fill="url(#plates)"/>
+</svg>

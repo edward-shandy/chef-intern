@@ -1,4 +1,4 @@
-import { LEVELS, levelNumber, type Level } from "../shared/level";
+import { LEVELS, levelNumber, previousLevel, type Level } from "../shared/level";
 import { READY_SECONDS, RECIPES, type GameState } from "../shared/sim";
 import { characterName } from "../shared/characters";
 import { ICONS, RECIPE_ICONS, SEATS } from "./hud";
@@ -17,10 +17,22 @@ const CAPTIONS: Record<Scene, { text: string; short: string; key?: string }> = {
   fire: { text: "Spray the fire", short: "Fire!", key: "hold <kbd>F</kbd>" },
   combo: { text: "All on one plate", short: "Combo" },
   belt: { text: "Let the belt carry it", short: "Belt" },
+  warp: { text: "Step on a pad to beam across", short: "Teleport" },
+  float: { text: "Zero gravity: start turns early!", short: "Floaty" },
 };
 
-// The big pictures for each kitchen: how to cook in the first one, then whatever that kitchen adds.
-const NEW_HERE: Scene[][] = [["grab", "chop", "plate", "serve"], ["pass"], ["wash"], ["grill", "fire"], ["combo"], ["belt"]];
+// The big pictures for each kitchen, by name: how to cook in the first one, then whatever that kitchen adds.
+// Keyed by name rather than position, so adding kitchens or themes never shifts them onto the wrong kitchen.
+const NEW_HERE: Record<string, Scene[]> = {
+  "Open Kitchen": ["grab", "chop", "plate", "serve"],
+  "The Pass": ["pass"],
+  "Rush Hour": ["wash"],
+  "Hot Line": ["grill", "fire"],
+  "Full House": ["combo"],
+  "Night Market": ["belt"],
+  "Docking Bay": ["warp"],
+  "Zero-G Galley": ["float", "warp"],
+};
 
 // Every job a kitchen asks for, as the scenes that show it.
 function scenesOf(level: Level): Scene[] {
@@ -30,6 +42,8 @@ function scenesOf(level: Level): Scene[] {
   if (level.plates) scenes.push("wash");
   if (level.fire) scenes.push("fire");
   if (level.tiles.some((tile) => tile.kind === "belt")) scenes.push("belt");
+  if (level.tiles.some((tile) => tile.kind === "warp")) scenes.push("warp");
+  if (level.lowGravity) scenes.push("float");
   return scenes;
 }
 
@@ -41,8 +55,10 @@ const panel = (scene: Scene, size: "big" | "small") => {
 
 function briefing(index: number): string {
   const level = LEVELS[index];
-  const before = index > 0 ? LEVELS[index - 1] : null;
-  const hero = NEW_HERE[index] ?? [];
+  // What counts as new is measured against the kitchen before this one in its own theme.
+  const earlier = previousLevel(index);
+  const before = earlier === null ? null : LEVELS[earlier];
+  const hero = NEW_HERE[level.name] ?? [];
   const also = scenesOf(level).filter((scene) => !hero.includes(scene));
   const dots = Array.from({ length: 5 }, (_, i) => `<i${i < level.difficulty ? ' class="on"' : ""}></i>`).join("");
 
@@ -64,10 +80,14 @@ function briefing(index: number): string {
       <button type="button" class="guide-close" data-close aria-label="Close">×</button>
     </header>
     <div class="guide-body">
-      <section class="guide-hero" data-count="${hero.length}">
+      ${
+        hero.length
+          ? `<section class="guide-hero" data-count="${hero.length}">
         <p class="guide-label${index > 0 ? " guide-label-new" : ""}">${index === 0 ? "How to cook" : "New here!"}</p>
         <ol class="guide-panels">${hero.map((scene) => panel(scene, "big")).join("")}</ol>
-      </section>
+      </section>`
+          : ""
+      }
       ${also.length ? `<section><p class="guide-label">Also in this kitchen</p><ul class="guide-panels guide-also">${also.map((scene) => panel(scene, "small")).join("")}</ul></section>` : ""}
       <section><p class="guide-label">Menu</p><ul class="guide-menu">${menu}</ul></section>
     </div>
