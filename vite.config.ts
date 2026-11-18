@@ -5,7 +5,8 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     // Forwards room sockets to the local Worker started by `wrangler dev`.
-    proxy: { "/ws": { target: "http://127.0.0.1:8787", ws: true } },
+    // The voice chat's network servers come from the Worker too.
+    proxy: { "/ws": { target: "http://127.0.0.1:8787", ws: true }, "/turn": "http://127.0.0.1:8787" },
   },
   build: { outDir: "dist", emptyOutDir: true },
 });

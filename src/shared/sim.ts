@@ -100,6 +100,10 @@ export interface PlayerState {
   dashCooldown: number;
   // The teleport pad this chef is standing on, or -1; a pad only fires again once they have stepped off it.
   onPad: number;
+  // What this chef has done this round, for the results screen and its titles.
+  stats: ChefStats;
+  // True while this chef is in the crew's voice chat.
+  voice: boolean;
 }
 
 export interface GameState {
@@ -143,6 +147,13 @@ export interface GameState {
   nextOrderIn: number;
   nextOrderId: number;
   seed: number;
+}
+
+export interface ChefStats {
+  served: number;
+  chopped: number;
+  washed: number;
+  doused: number;
 }
 
 export interface PlayerInput {
@@ -244,6 +255,8 @@ export function addPlayer(state: GameState, id: number, name = "", character: Ch
     dashTime: 0,
     dashCooldown: 0,
     onPad: -1,
+    stats: { served: 0, chopped: 0, washed: 0, doused: 0 },
+    voice: false,
   });
 }
 
@@ -326,13 +339,14 @@ function combine(held: Item, resting: Item): "held" | "resting" | "both-stay" | 
   return null;
 }
 
-function serve(state: GameState, plate: Plate): void {
+function serve(state: GameState, plate: Plate, player: PlayerState): void {
   const dish = plate.contents.join("+");
   const index = state.orders.findIndex((order) => [...RECIPES[order.recipe].parts].sort().join("+") === dish);
   if (index === -1) return;
   const [order] = state.orders.splice(index, 1);
   state.score += RECIPES[order.recipe].points + Math.ceil((order.timeLeft / order.timeTotal) * MAX_TIP);
   state.delivered += 1;
+  player.stats.served += 1;
 }
 
 // Turns the chef towards a tile it is using, so aimed actions never happen behind its back.
@@ -385,7 +399,7 @@ function interact(level: Level, state: GameState, player: PlayerState, aim: numb
     else if (held.type === "ingredient") player.held = null;
   } else if (tile.kind === "serve") {
     if (held.type === "plate" && held.contents.length > 0) {
-      serve(state, held);
+      serve(state, held, player);
       player.held = null;
       if (state.plates !== null) state.returning.push(RETURN_SECONDS);
     }
@@ -427,7 +441,10 @@ function spray(level: Level, state: GameState, player: PlayerState, aim: number 
     const ahead = (dx * Math.sin(player.facing) + dz * Math.cos(player.facing)) / Math.max(distance, 1e-6);
     if (ahead < SPRAY_ARC) continue;
     state.fires[index] -= dt / EXTINGUISH_SECONDS;
-    if (state.fires[index] <= 0) delete state.fires[index];
+    if (state.fires[index] <= 0) {
+      delete state.fires[index];
+      player.stats.doused += 1;
+    }
   }
 }
 
@@ -479,6 +496,7 @@ function chop(level: Level, state: GameState, player: PlayerState, aim: number |
       state.wash.progress = 0;
       state.wash.dirty -= 1;
       state.wash.clean += 1;
+      player.stats.washed += 1;
     }
     return;
   }
@@ -489,6 +507,7 @@ function chop(level: Level, state: GameState, player: PlayerState, aim: number |
   if (item?.type === "ingredient" && item.chop < 1 && PREP[item.kind].chop) {
     item.chop = Math.min(1, item.chop + dt / CHOP_SECONDS);
     player.chopping = true;
+    if (item.chop >= 1) player.stats.chopped += 1;
   }
 }
 
@@ -574,7 +593,11 @@ export function chooseLevel(state: GameState, level: number): void {
   if (state.phase !== "waiting" || !LEVELS[level] || level === state.level) return;
   const players = state.players;
   Object.assign(state, createGame(level, state.seed, true));
-  for (const { id, name, character } of players) addPlayer(state, id, name, character);
+  // Chefs keep their name, look and voice chat across kitchens and rounds, so a call never drops between them.
+  for (const { id, name, character, voice } of players) {
+    addPlayer(state, id, name, character);
+    state.players[state.players.length - 1].voice = voice;
+  }
 }
 
 // Names a chef, keeping only a short run of letters, digits and a few marks.
@@ -588,6 +611,12 @@ export function renamePlayer(state: GameState, id: number, name: unknown): void 
 }
 
 // Swaps a chef's character; any character can be picked, even one a teammate already plays.
+// Joins or leaves the crew's voice chat.
+export function setVoice(state: GameState, id: number, on: unknown): void {
+  const player = state.players.find((other) => other.id === id);
+  if (player) player.voice = on === true;
+}
+
 export function setCharacter(state: GameState, id: number, character: unknown): void {
   const player = state.players.find((other) => other.id === id);
   if (player && isCharacter(character)) player.character = character;
@@ -622,7 +651,11 @@ function restartRound(state: GameState): void {
   const players = state.players;
   const level = state.won ? nextLevel(state.level) : state.level;
   Object.assign(state, createGame(level, state.seed, false, state.won ? "ready" : "playing"));
-  for (const { id, name, character } of players) addPlayer(state, id, name, character);
+  // Chefs keep their name, look and voice chat across kitchens and rounds, so a call never drops between them.
+  for (const { id, name, character, voice } of players) {
+    addPlayer(state, id, name, character);
+    state.players[state.players.length - 1].voice = voice;
+  }
 }
 
 // Pushes the player's circle out of every solid tile it overlaps.

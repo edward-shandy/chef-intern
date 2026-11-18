@@ -37,8 +37,8 @@ const TAILLESS = new Set(["frog"]);
 const hipsProp = (id: string): string | null => ANIMALS[id]?.hips ?? (TAILLESS.has(id) ? null : `tail_${id}`);
 export const CHEF_PROPS = Object.keys(ANIMALS).flatMap((id) => [`head_${id}`, hipsProp(id) ?? []].flat());
 
-type ClipName = "idle" | "run" | "idleLegs" | "runLegs" | "carry" | "chop";
-const CLIP_NAMES: ClipName[] = ["idle", "run", "idleLegs", "runLegs", "carry", "chop"];
+type ClipName = "idle" | "run" | "idleLegs" | "runLegs" | "carry" | "chop" | "cheer";
+const CLIP_NAMES: ClipName[] = ["idle", "run", "idleLegs", "runLegs", "carry", "chop", "cheer"];
 
 // Bones the carry pose takes over from the walk cycle; the loader strips dots from node names.
 const ARM_TRACK = /^(upperarm|lowerarm|wrist|hand|handslot)[lr]\./;
@@ -71,6 +71,7 @@ export async function loadChefs(): Promise<void> {
         runLegs: split(find("Running_A"), "runLegs", false),
         carry: split(find("2H_Melee_Idle"), "carry", true),
         chop: find("1H_Melee_Attack_Chop"),
+        cheer: find("Cheer"),
       },
     });
   }
@@ -284,4 +285,54 @@ export function animateChef(rig: ChefRig, player: PlayerState, dt: number): void
     arm.rotation.x += Math.sin(phase) * 0.32 * rig.scrub;
     arm.rotation.z += Math.cos(phase) * 0.22 * rig.scrub;
   });
+}
+
+// ---------------------------------------------------------------- results poses
+
+export type ResultPose = "cheer" | "sad";
+
+// Big cartoon tears for the losing pose: a drop under each eye and a stream running down the cheek, in the head bone's
+// units (the same frame the animal heads and the toque are authored in).
+function createTears(): THREE.Group {
+  const tears = new THREE.Group();
+  const water = new THREE.MeshStandardMaterial({ color: 0x6fc8ff, emissive: 0x2a8fd0, emissiveIntensity: 0.35, roughness: 0.1 });
+  for (const side of [-1, 1]) {
+    const stream = mesh(new THREE.CapsuleGeometry(0.035, 0.22, 4, 8), water, side * 0.2, 0.33, 0.47);
+    stream.rotation.z = side * 0.12;
+    const drop = mesh(new THREE.SphereGeometry(0.06, 12, 10), water, side * 0.23, 0.17, 0.48);
+    drop.scale.y = 1.3;
+    tears.add(stream, drop);
+  }
+  return tears;
+}
+
+// Freezes a chef in a results pose at time t (seconds): mid-cheer from the rig's own Cheer animation, or slumped
+// and crying, with its head down, its arms hanging and a little sob in the shoulders.
+export function poseChef(rig: ChefRig, pose: ResultPose, t: number): void {
+  for (const name of CLIP_NAMES) {
+    const weight = pose === "cheer" ? (name === "cheer" ? 1 : 0) : name === "idle" ? 1 : 0;
+    rig.weights[name] = weight;
+    rig.actions[name].setEffectiveWeight(weight);
+  }
+  rig.knife.visible = rig.sponge.visible = false;
+  rig.mixer.setTime(pose === "cheer" ? t % rig.actions.cheer.getClip().duration : 0.4);
+  if (pose !== "sad") return;
+  // Every tweak is added on top of the idle pose: the bones have rest rotations of their own, so setting them
+  // outright would twist the chef round. Not every bone is keyed by the idle clip, so the pose's starting rotations
+  // are saved the first time and put back each frame; otherwise each frame would bend the chef a little further.
+  const bones = [rig.chest, rig.figure.getObjectByName("head") ?? null, ...rig.arms].filter((bone): bone is THREE.Object3D => bone !== null);
+  const saved = (rig.figure.userData.sadBase ??= bones.map((bone) => bone.quaternion.clone())) as THREE.Quaternion[];
+  bones.forEach((bone, i) => bone.quaternion.copy(saved[i]));
+  const sob = Math.sin(t * 9) * 0.04;
+  if (rig.chest) rig.chest.rotation.x += 0.22 + sob;
+  const head = rig.figure.getObjectByName("head");
+  if (head) head.rotation.x += 0.28 + sob;
+  rig.arms.forEach((arm, side) => {
+    if (arm) arm.rotation.z += side ? -0.18 : 0.18;
+  });
+  if (head && !head.getObjectByName("tears")) {
+    const tears = createTears();
+    tears.name = "tears";
+    head.add(tears);
+  }
 }

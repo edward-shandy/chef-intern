@@ -81,6 +81,14 @@ Docking Bay (difficulty 2) is a module split by a bulkhead, with one pair of pad
 
 **Trying a kitchen directly:** add `&level=3` (or 1, 2) to a room URL that nobody has joined yet and that room opens in the chosen kitchen. It only works on the first connection to a fresh room.
 
+**Results screen:** the popup at the end of a round shows the whole crew in their chosen chefs. Each chef gets a title for the job they led and a line of their numbers. The simulation counts these per chef in `PlayerState.stats`: dishes served, items chopped, plates washed and fires put out.
+
+- **Titles:** Head Chef, Knife Master, Dish Hero or Firefighter. Ties share a title. A chef who led nothing is Sous Chef after a win, or "Tried their best" after a loss.
+- **After a win:** every chef cheers, using the rig's own Cheer animation. They hop on a warm spotlight under falling confetti.
+- **After a loss:** every chef slumps with their head down and cartoon tears running down their face, under a little rain cloud of their own. Rain falls across the screen.
+- **How the poses are drawn:** `posesOf` in `portraits.ts` renders the full-body pose frames from the real 3D models the first time they are needed, eight frames per chef. `results.ts` flips through them like a flip-book.
+- **Short screens:** the card is compacted, and the controls hint is hidden while the results show.
+
 **Kitchen briefing and ready-up:** pressing Start service (or clearing a kitchen, which leads straight to the next one) puts the round in a `ready` phase: the kitchen is on screen, but there are no orders and the clock waits. Every client opens a picture-first briefing. Big animated cartoons show what the kitchen adds: grab, chop, plate and serve in the first kitchen, then passing over the wall, washing up, the grill and fire, the chicken salad combo and the conveyor belt. Small pictures recall the jobs carried over from earlier kitchens, and the menu shows each dish as its ticket icons. Closing it ("Let's cook!", Enter or Esc) sends `ready`. A banner then shows which chefs are ready (✓) and which are still reading. When all of them are ready, a 3-2-1 count-down starts the clock. If someone is idle, the count-down starts anyway after 45 seconds (`READY_SECONDS`) and closes their briefing. After a loss the same kitchen restarts straight away without the briefing. The Guide button in the header reopens it at any time without pausing the clock. The scenes are inline SVG in `src/client/illustrations.ts`, animated by the `.ill-*` rules in `style.css`; the popup, banner and count-down are in `src/client/guide.ts`.
 
 **Music on phones:** iPhone Safari ignores `audio.volume`, so the music keeps its own fade level per track and, once the first tap unlocks audio, plays through Web Audio gain nodes (`src/client/sound.ts`). "Music off" fades it out and pauses it, "Sound off" silences music as well as effects, and nothing plays while the page is in the background.
@@ -127,6 +135,17 @@ Map letters: `.` floor, `S` spawn, `#` counter, `T` `L` `N` tomato, lettuce and 
 
 **Playing with friends:** share the URL with the same `?room=CODE`. A room seats 4; the seat number picks the spawn corner and shirt colour. A fifth connection is closed with code 4000 and the client stops retrying. Once every seat has been empty past the 10 s reconnect grace, the room stops ticking and resets.
 
+**Voice chat:** players in the same room can talk to each other. The mic button in the header joins the call; once in, it mutes and unmutes the microphone (so does `M`, and the Microphone switch in the menu). The Voice chat switch in the menu leaves it. The choice is remembered on the device, so someone who had voice on rejoins in their next kitchen. Joining asks for the microphone; someone who refuses (or has none) still hears everyone ("listening only"). `src/client/voice.ts` links every chef with voice on directly to every other one over WebRTC (a mesh of at most three links each). The audio never passes through the game server. The room socket only relays the `rtc` messages (offers, answers and network candidates) the two browsers need to find each other, and the `voice` flag in `PlayerState` tells everyone who is in the call. The lower seat number always makes the offer, and each attempt carries an epoch so leftovers from an older link are ignored. A chef heard talking gets a green speech bubble over their head (`createTalkBubble` in `scene.ts`); loudness is measured locally with an `AnalyserNode` on each voice.
+
+**Voice chat on mobile data (TURN):** a direct link works on most home Wi-Fi, but some mobile carriers and office firewalls block it, and those players then stay on "connecting…". A TURN relay fixes that. The Worker's `/turn` endpoint returns the servers browsers use: public STUN by default, plus short-lived Cloudflare TURN credentials when a key is set up. To enable it: in the Cloudflare dashboard open Realtime → TURN Server, create a TURN key, then store its id and API token as Worker secrets:
+
+```bash
+npx wrangler secret put TURN_KEY_ID
+npx wrangler secret put TURN_KEY_API_TOKEN
+```
+
+Cloudflare TURN includes a monthly free allowance (1,000 GB at the time of writing) and charges per GB after that; voice uses about 30 MB per player per hour, and only for players who actually need the relay. For local testing put the same two values in `.dev.vars`.
+
 Other scripts: `npm run typecheck`, `npm run build`, `npm run deploy` (build + `wrangler deploy`, needs `npx wrangler login` once).
 
 ## Gotchas
@@ -150,7 +169,8 @@ Other scripts: `npm run typecheck`, `npm run build`, `npm run deploy` (build + `
 - **Adding a model** — copy its `.gltf` and `.bin` from the pack into `public/models` and add the name to `MODEL_NAMES` in `assets.ts`; a name missing from the folder makes the whole kitchen fail to load with "Could not load the kitchen".
 - **All kitchens must be 13x9** — the camera and shadow frustum are framed once for that size, and `setLevel` in `scene.ts` only swaps the kitchen contents.
 - **Dash is predicted like movement** — the dash press travels inside the input message and `dashTime` / `dashCooldown` are part of `PlayerState`, so the client replays it exactly instead of rubber-banding.
-- **Asset routing** — requests matching a file in `dist/` are served directly; everything else (i.e. `/ws/*`) reaches the Worker.
+- **Asset routing** — requests matching a file in `dist/` are served directly; everything else (i.e. `/ws/*` and `/turn`) reaches the Worker.
+- **Voice chat needs HTTPS** — browsers only open the microphone on `https://` or `localhost`. Testing from a phone on the LAN (`http://192.168.x.x:5173`) is listen-only; use the deployed site or a tunnel.
 
 ## Roadmap
 

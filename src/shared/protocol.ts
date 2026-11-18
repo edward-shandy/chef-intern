@@ -14,7 +14,9 @@ export type ServerMessage =
   | ({ type: "state"; acks: Acks } & GameState)
   | { type: "pong"; t: number }
   // Sent just before the server drops a socket whose seat a newer connection took over.
-  | { type: "replaced" };
+  | { type: "replaced" }
+  // A voice-chat signalling message (an SDP offer/answer or an ICE candidate) relayed from another chef.
+  | { type: "rtc"; from: number; data: unknown };
 
 // Messages a client sends to its room.
 export type ClientMessage =
@@ -29,4 +31,11 @@ export type ClientMessage =
   | { type: "name"; name: string }
   // Which chef this player wants to be, by id from CHARACTERS.
   | { type: "character"; character: string }
-  | { type: "ping"; t: number };
+  | { type: "ping"; t: number }
+  // Joins or leaves the crew's voice chat; chefs in it connect to each other directly.
+  | { type: "voice"; on: boolean }
+  // A voice-chat signalling message for one other chef, which the server passes on untouched.
+  | { type: "rtc"; to: number; data: unknown };
+
+// Largest signalling message the server will relay; an SDP offer is a few kilobytes.
+export const MAX_RTC_MESSAGE = 16_000;

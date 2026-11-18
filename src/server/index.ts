@@ -4,6 +4,7 @@ import { LEVELS } from "../shared/level";
 import {
   CLOSE_REPLACED,
   CLOSE_ROOM_FULL,
+  MAX_RTC_MESSAGE,
   type Acks,
   type ClientMessage,
   type ServerMessage,
@@ -13,6 +14,7 @@ import {
   chooseLevel,
   renamePlayer,
   setCharacter,
+  setVoice,
   createGame,
   freePlayerSlot,
   IDLE_INPUT,
@@ -26,6 +28,9 @@ import {
 
 interface Env {
   ROOM: DurableObjectNamespace<Room>;
+  // Optional Cloudflare Realtime TURN key, so voice chat also connects across strict mobile and office networks.
+  TURN_KEY_ID?: string;
+  TURN_KEY_API_TOKEN?: string;
 }
 
 interface Seat {
@@ -167,6 +172,10 @@ export class Room extends DurableObject<Env> {
       markReady(this.game, this.attachmentOf(socket)!.id);
     } else if (message.type === "ping" && typeof message.t === "number") {
       this.send(socket, { type: "pong", t: message.t });
+    } else if (message.type === "voice") {
+      setVoice(this.game, this.attachmentOf(socket)!.id, message.on);
+    } else if (message.type === "rtc") {
+      this.relaySignal(this.attachmentOf(socket)!.id, message.to, message.data);
     }
   }
 
@@ -192,6 +201,16 @@ export class Room extends DurableObject<Env> {
     return seat && seat.conn === attachment!.conn ? seat : null;
   }
 
+  // Passes a voice-chat offer, answer or network candidate straight to the one chef it is meant for. The audio
+  // itself never touches the server: once the two browsers have swapped these, they talk to each other directly.
+  private relaySignal(from: number, to: unknown, data: unknown): void {
+    if (typeof to !== "number" || to === from || data === undefined) return;
+    const seat = this.seats.get(to);
+    const target = seat && seat.goneAt === null ? this.socketOf(seat) : null;
+    if (!target || JSON.stringify(data).length > MAX_RTC_MESSAGE) return;
+    this.send(target, { type: "rtc", from, data });
+  }
+
   private socketOf(seat: Seat): WebSocket | null {
     return this.ctx.getWebSockets().find((socket) => this.attachmentOf(socket)?.conn === seat.conn) ?? null;
   }
@@ -214,6 +233,8 @@ export class Room extends DurableObject<Env> {
     if (!seat) return;
     seat.goneAt = Date.now();
     Object.assign(seat.input, IDLE_INPUT);
+    // Their call ends with the connection; on coming back the page joins the voice chat again by itself.
+    setVoice(this.game, this.attachmentOf(socket)!.id, false);
   }
 
   // Runs a tick right now, with at least one simulation step, so an action's result goes out without waiting.
@@ -277,9 +298,36 @@ export class Room extends DurableObject<Env> {
   }
 }
 
+// Public STUN servers let two browsers find each other's address; that is enough on most home Wi-Fi.
+const STUN_SERVERS = [{ urls: ["stun:stun.cloudflare.com:3478", "stun:stun.l.google.com:19302"] }];
+
+// The servers a browser uses to set up voice chat. With a Cloudflare TURN key configured, this adds short-lived
+// relay credentials, which carry the audio when a mobile carrier or strict firewall blocks a direct connection.
+async function iceServers(env: Env): Promise<Response> {
+  let servers: unknown[] = STUN_SERVERS;
+  if (env.TURN_KEY_ID && env.TURN_KEY_API_TOKEN) {
+    try {
+      const response = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${env.TURN_KEY_ID}/credentials/generate-ice-servers`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${env.TURN_KEY_API_TOKEN}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ ttl: 86_400 }),
+      });
+      if (response.ok) {
+        const body = (await response.json()) as { iceServers?: unknown };
+        const turn = Array.isArray(body.iceServers) ? body.iceServers : body.iceServers ? [body.iceServers] : [];
+        if (turn.length) servers = [...STUN_SERVERS, ...turn];
+      }
+    } catch {
+      // TURN is a bonus: without it, voice still works wherever a direct connection does.
+    }
+  }
+  return Response.json({ iceServers: servers }, { headers: { "Cache-Control": "no-store" } });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const { pathname } = new URL(request.url);
+    if (pathname === "/turn") return iceServers(env);
     const code = pathname.startsWith("/ws/") ? pathname.slice(4).toUpperCase() : "";
     if (!ROOM_CODE_PATTERN.test(code)) {
       return new Response("Not found", { status: 404 });

@@ -2740,3 +2740,496 @@ html {
   from { transform: translateY(0); }
   to { transform: translateY(-12px); }
 }
+
+/* ---- results: the crew cheering or crying ---- */
+
+.gameover-card {
+  position: relative;
+  z-index: 1;
+  width: min(620px, 100%);
+  box-sizing: border-box;
+}
+
+.gameover[data-result="lost"] .gameover-kicker {
+  color: #6b7aa8;
+}
+
+.result-crew {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin: 6px 0 14px;
+}
+
+/* Room above the stages for the rain clouds, so they never sit on the title. */
+.result-crew[data-result="lost"] {
+  margin-top: 34px;
+  row-gap: 40px;
+}
+
+.crew-card {
+  display: grid;
+  align-content: start;
+  justify-items: center;
+  gap: 2px;
+  width: 128px;
+  margin: 0;
+  animation: crew-in 0.5s var(--pop) both;
+  animation-delay: var(--delay);
+}
+
+.crew-stage {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 42%, #fff6dc, #f3d6aa 72%);
+  box-shadow: inset 0 0 0 4px var(--seat), 0 4px 0 rgb(36 29 48 / 0.15);
+}
+
+.result-crew[data-result="lost"] .crew-stage {
+  background: radial-gradient(circle at 50% 42%, #e9eef8, #b9c4dc 72%);
+}
+
+.crew-stage img {
+  position: absolute;
+  inset: -14px -10px 0;
+  width: calc(100% + 20px);
+  height: calc(100% + 14px);
+  object-fit: contain;
+}
+
+/* A winner bounces; a loser sways sadly. */
+.result-crew[data-result="won"] .crew-stage img {
+  animation: crew-hop 0.9s ease-in-out infinite;
+  animation-delay: var(--delay);
+}
+
+.result-crew[data-result="lost"] .crew-stage img {
+  animation: crew-sob 1.6s ease-in-out infinite;
+  filter: saturate(0.75);
+}
+
+.crew-card figcaption {
+  display: grid;
+  justify-items: center;
+  gap: 1px;
+  text-align: center;
+}
+
+.crew-card figcaption b {
+  max-width: 128px;
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crew-card figcaption small {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--teal);
+}
+
+.crew-title {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 900;
+  color: #fff;
+  background: var(--seat);
+}
+
+.crew-stats {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.25;
+  opacity: 0.65;
+}
+
+/* A little grey rain cloud over each chef after a loss, raining on them. */
+.crew-cloud {
+  position: absolute;
+  top: -22px;
+  left: 50%;
+  z-index: 2;
+  width: 64px;
+  height: 26px;
+  border-radius: 20px;
+  background: #8e98b3;
+  box-shadow: inset 0 -4px 0 rgb(0 0 0 / 0.12);
+  transform: translateX(-50%);
+  animation: cloud-drift 3s ease-in-out infinite alternate;
+}
+
+.crew-cloud::before,
+.crew-cloud::after {
+  content: "";
+  position: absolute;
+  bottom: 8px;
+  border-radius: 50%;
+  background: #8e98b3;
+}
+
+.crew-cloud::before {
+  left: 8px;
+  width: 26px;
+  height: 26px;
+}
+
+.crew-cloud::after {
+  left: 26px;
+  width: 32px;
+  height: 32px;
+}
+
+.crew-cloud i {
+  position: absolute;
+  top: 24px;
+  width: 3px;
+  height: 10px;
+  border-radius: 2px;
+  background: #6fc8ff;
+  animation: drizzle 0.8s linear infinite;
+}
+
+.crew-cloud i:nth-child(1) {
+  left: 14px;
+}
+
+.crew-cloud i:nth-child(2) {
+  left: 30px;
+  animation-delay: -0.3s;
+}
+
+.crew-cloud i:nth-child(3) {
+  left: 46px;
+  animation-delay: -0.55s;
+}
+
+/* Extra tears dripping off the chef's face, on top of the ones in the 3D pose. */
+.crew-tears i {
+  position: absolute;
+  top: 46%;
+  width: 7px;
+  height: 10px;
+  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+  background: #6fc8ff;
+  box-shadow: inset -1px -2px 0 rgb(0 0 0 / 0.12);
+  animation: tear-drop 1.1s ease-in infinite;
+}
+
+.crew-tears i:nth-child(1) {
+  left: 38%;
+}
+
+.crew-tears i:nth-child(2) {
+  left: 58%;
+  animation-delay: -0.45s;
+}
+
+.crew-tears i:nth-child(3) {
+  left: 40%;
+  animation-delay: -0.75s;
+}
+
+.crew-tears i:nth-child(4) {
+  left: 56%;
+  animation-delay: -0.2s;
+}
+
+/* Confetti or rain across the whole screen, behind the card. */
+.result-fx {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.result-fx i {
+  position: absolute;
+  top: -20px;
+  display: block;
+}
+
+.result-fx[data-result="won"] i {
+  width: 9px;
+  height: 14px;
+  border-radius: 2px;
+  animation-name: confetti-fall;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+.result-fx[data-result="lost"] i {
+  width: 2px;
+  height: 18px;
+  border-radius: 2px;
+  background: rgb(150 190 255 / 0.45);
+  animation-name: rain-fall;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+.gameover[data-result="lost"] {
+  background: rgb(22 24 40 / 0.78);
+}
+
+@keyframes crew-in {
+  from {
+    transform: translateY(24px) scale(0.6);
+    opacity: 0;
+  }
+}
+
+@keyframes crew-hop {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  40% {
+    transform: translateY(-10px) rotate(-3deg);
+  }
+  60% {
+    transform: translateY(-10px) rotate(3deg);
+  }
+}
+
+@keyframes crew-sob {
+  0%,
+  100% {
+    transform: translateX(0) rotate(0deg);
+  }
+  50% {
+    transform: translateX(2px) rotate(2deg);
+  }
+}
+
+@keyframes cloud-drift {
+  from {
+    transform: translateX(-56%);
+  }
+  to {
+    transform: translateX(-44%);
+  }
+}
+
+@keyframes drizzle {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(26px);
+    opacity: 0;
+  }
+}
+
+@keyframes tear-drop {
+  0% {
+    transform: translateY(0) scale(0.6);
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(46px) scale(1);
+    opacity: 0;
+  }
+}
+
+@keyframes confetti-fall {
+  from {
+    transform: translateY(0) rotate(0deg);
+  }
+  to {
+    transform: translateY(110vh) rotate(var(--spin, 360deg));
+  }
+}
+
+@keyframes rain-fall {
+  from {
+    transform: translateY(0) translateX(0);
+  }
+  to {
+    transform: translateY(110vh) translateX(-30px);
+  }
+}
+
+@media (max-width: 520px) {
+  .crew-card {
+    width: 104px;
+  }
+
+  .crew-stage {
+    width: 96px;
+    height: 96px;
+  }
+
+  .crew-card figcaption b {
+    max-width: 104px;
+    font-size: 13.5px;
+  }
+}
+
+@media (max-height: 500px) {
+  .result-crew {
+    margin: 2px 0 6px;
+  }
+
+  .crew-stage {
+    width: 76px;
+    height: 76px;
+  }
+
+  .crew-card {
+    width: 96px;
+  }
+
+  .crew-stats {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .result-fx,
+  .crew-stage img,
+  .crew-cloud,
+  .crew-cloud i,
+  .crew-tears i {
+    animation: none !important;
+  }
+}
+
+/* The controls hint has nothing to say on the results screen, and would cover its bottom line. */
+.gameover:not([hidden]) ~ .hint {
+  display: none;
+}
+
+/* Short screens (a phone on its side): a compact card that always fits, scrolling if it ever has to. */
+@media (max-height: 500px) {
+  .gameover {
+    padding-top: max(8px, env(safe-area-inset-top));
+  }
+
+  .gameover-card {
+    max-height: calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    overflow-y: auto;
+    padding: 10px 20px 12px;
+  }
+
+  .gameover h2 {
+    margin: 0 0 4px;
+    font-size: 26px;
+  }
+
+  .gameover-score b {
+    font-size: 30px;
+  }
+
+  .gameover-score {
+    font-size: 14px;
+  }
+
+  .goal-large {
+    margin: 6px 0 4px;
+    height: 8px;
+  }
+
+  .gameover-orders {
+    font-size: 12.5px;
+  }
+
+  .gameover-hint {
+    margin-top: 6px !important;
+    font-size: 12.5px;
+  }
+
+  .result-crew[data-result="lost"] {
+    margin-top: 32px;
+  }
+
+  .crew-cloud {
+    top: -18px;
+    width: 50px;
+    height: 20px;
+  }
+
+  .crew-title {
+    font-size: 10.5px;
+    white-space: nowrap;
+  }
+}
+
+/* ---- voice chat ---- */
+
+/* A small grey note after a menu label: the voice chat's state, or the key that does the same thing. */
+.menu-note {
+  margin-left: 4px;
+  font-size: 11.5px;
+  font-weight: 800;
+  opacity: 0.55;
+}
+
+.mic-button {
+  position: relative;
+  transition: background 0.15s ease-out, color 0.15s ease-out, box-shadow 0.15s ease-out;
+}
+
+.mic-button[hidden] {
+  display: none;
+}
+
+.mic-button .mic-slash {
+  display: none;
+}
+
+/* Off: a dim crossed-out mic that invites a tap. */
+.mic-button[data-state="off"] {
+  color: rgb(255 248 236 / 0.6);
+}
+
+.mic-button[data-state="off"] .mic-slash,
+.mic-button[data-state="muted"] .mic-slash,
+.mic-button[data-state="listening"] .mic-slash {
+  display: block;
+}
+
+.mic-button[data-state="live"] {
+  color: #10331f;
+  background: #6fdc8c;
+}
+
+.mic-button[data-state="muted"] {
+  color: #fff;
+  background: #d23c2c;
+}
+
+.mic-button[data-state="connecting"] {
+  animation: mic-wait 1s ease-in-out infinite alternate;
+}
+
+/* While this chef is heard talking, a green ring pulses round the button. */
+.mic-button[data-talking="true"] {
+  box-shadow: 0 0 0 3px rgb(111 220 140 / 0.55);
+}
+
+@keyframes mic-wait {
+  from {
+    opacity: 0.55;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mic-button[data-state="connecting"] {
+    animation: none;
+  }
+}
