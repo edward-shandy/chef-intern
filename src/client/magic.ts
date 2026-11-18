@@ -1,7 +1,7 @@
 import * as THREE from "three";
-import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import type { Level } from "../shared/level";
-import { decoration } from "./assets";
+import { decoration, markShared } from "./assets";
+import { mergeStatic } from "./merge";
 import { canvasTexture, cylinder, mat, mesh, noise, shadowed } from "./models";
 
 // The Wizard's Keep: a vaulted castle hall around the kitchen. Stone walls with stained-glass windows, timber
@@ -114,6 +114,7 @@ function ripples(): THREE.CanvasTexture {
     ctx.putImageData(image, 0, 0);
   });
   rippleTexture.wrapS = rippleTexture.wrapT = THREE.RepeatWrapping;
+  markShared(rippleTexture);
   rippleTexture.colorSpace = THREE.NoColorSpace;
   return rippleTexture;
 }
@@ -636,44 +637,10 @@ export function createMagic(level: Level): { group: THREE.Group; view: MagicView
     fireplaceLight.intensity = 5 + Math.sin(time * 11) * 0.5 + Math.sin(time * 17.3) * 0.35;
   });
 
-  group.add(mergeStatic(solid));
+  // Everything in the hall stands still, so it is merged into a few dozen draw calls. The hall casts no shadows (the
+  // sun's shadow only covers the kitchen anyway), which also keeps it out of the shadow pass.
+  group.add(mergeStatic(solid, false));
   return { group, view: { tick: (time) => ticks.forEach((tick) => tick(time)) } };
-}
-
-// Everything in the hall stands still, so it is merged into one mesh per look (material colour, gloss, glow):
-// thousands of stones, books, posts and wizards become a few dozen draw calls. The hall casts no shadows (the sun's
-// shadow only covers the kitchen anyway), which also keeps it out of the shadow pass.
-function mergeStatic(root: THREE.Object3D): THREE.Group {
-  root.updateMatrixWorld(true);
-  const buckets = new Map<string, { material: THREE.Material; parts: THREE.BufferGeometry[] }>();
-  root.traverse((child) => {
-    if (!(child instanceof THREE.Mesh)) return;
-    const material = child.material as THREE.MeshStandardMaterial;
-    const key = [
-      material.name,
-      material.color?.getHexString(),
-      material.emissive?.getHexString(),
-      material.emissiveIntensity,
-      material.roughness,
-      material.metalness,
-      child.geometry.index ? "i" : "n",
-      Object.keys(child.geometry.attributes).sort().join(","),
-    ].join("|");
-    const geometry = child.geometry.clone().applyMatrix4(child.matrixWorld);
-    const bucket = buckets.get(key) ?? { material, parts: [] };
-    bucket.parts.push(geometry);
-    buckets.set(key, bucket);
-  });
-  const merged = new THREE.Group();
-  for (const { material, parts } of buckets.values()) {
-    const geometry = mergeGeometries(parts);
-    for (const part of parts) part.dispose();
-    if (!geometry) continue;
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.receiveShadow = true;
-    merged.add(mesh);
-  }
-  return merged;
 }
 
 export function animateMagic(room: THREE.Group, time: number): void {

@@ -11,12 +11,13 @@ import {
   potIsCooked,
   type Item,
 } from "../shared/sim";
-import { decoration, model, MODEL_SCALE, modelGeometry, modelMaterial, type ModelName } from "./assets";
+import { decoration, model, MODEL_SCALE, modelGeometry, modelMaterial, type ModelName, markShared } from "./assets";
 import { createExtinguisher } from "./fire";
 import { CODE_FOOD, createBurger, createCrate, createFood, type Stage } from "./food";
 import { createCoralPot, createSea, createSeaCounter, SEA_SAND } from "./sea";
 import { createSpace, createSpaceCounter } from "./space";
 import { animatePortal, createMagic, createPortal, magicCounterParts } from "./magic";
+import { mergeStatic } from "./merge";
 import { createStreet, streetGround } from "./street";
 
 export { animateStreet } from "./street";
@@ -319,9 +320,15 @@ function imageTexture(url: string): THREE.Texture {
   if (!texture) {
     texture = new THREE.TextureLoader().load(url);
     imageTextures.set(url, texture);
+    markShared(texture);
   }
   return texture;
 }
+
+const isInside = (object: THREE.Object3D, root: THREE.Object3D): boolean => {
+  for (let node: THREE.Object3D | null = object.parent; node; node = node.parent) if (node === root) return true;
+  return false;
+};
 
 // Floor, a wooden deck around it, the restaurant or a plain wall behind, and lamps over the back counters.
 export function createRoom(level: Level, anisotropy: number): THREE.Group {
@@ -526,7 +533,14 @@ export function createRoom(level: Level, anisotropy: number): THREE.Group {
     lamp.position.set(x, 1.75, 0.85);
     room.add(lamp);
   }
-  room.add(shadowed(solid));
+  // Guests sway and hop, so they stay separate; everything else in the room stands still and is merged.
+  solid.updateMatrixWorld(true);
+  for (const guest of guests) {
+    if (!isInside(guest, solid)) continue;
+    room.attach(guest);
+    guest.userData.restY = guest.position.y;
+  }
+  room.add(mergeStatic(solid, true));
   return room;
 }
 
@@ -549,6 +563,7 @@ export function labelTexture(text: string, background: string): THREE.CanvasText
     ctx.fillText(text, 128, 43);
   });
   labelTextures.set(text + background, texture);
+  markShared(texture);
   return texture;
 }
 

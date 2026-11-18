@@ -38,6 +38,56 @@ export type ModelName = (typeof MODEL_NAMES)[number];
 // The pack is authored on a 2-unit grid, while our tiles are 1 unit wide.
 export const MODEL_SCALE = 0.5;
 
+// ---------------------------------------------------------------- freeing GPU memory
+
+// Geometries, materials and textures that many objects share for the whole visit (the KayKit pack, loaded props and
+// chefs, cached textures). Releasing a subtree never frees these, only what that subtree owned by itself.
+const shared = new WeakSet<object>();
+
+export function markShared(...things: Array<object | null | undefined>): void {
+  for (const thing of things) if (thing) shared.add(thing);
+}
+
+// Marks everything an object (and its children) is made of as shared: used on loaded models that get cloned.
+export function markTreeShared(root: THREE.Object3D): void {
+  root.traverse((child) => {
+    const mesh = child as THREE.Mesh;
+    markShared(mesh.geometry);
+    for (const material of materialsOf(mesh)) {
+      markShared(material);
+      for (const key of TEXTURE_KEYS) markShared((material as unknown as Record<string, THREE.Texture | null>)[key]);
+    }
+  });
+}
+
+const TEXTURE_KEYS = ["map", "normalMap", "emissiveMap", "roughnessMap", "metalnessMap", "alphaMap", "aoMap", "bumpMap", "lightMap", "displacementMap"];
+
+const materialsOf = (mesh: THREE.Mesh): THREE.Material[] =>
+  mesh.material ? (Array.isArray(mesh.material) ? mesh.material : [mesh.material]) : [];
+
+// Frees the GPU memory of everything in a subtree that was removed from the scene for good: its own geometries,
+// materials and textures (including shader uniforms holding textures), but nothing marked shared. Without this,
+// every change of kitchen left the old one's buffers on the GPU, and memory grew all visit long.
+export function releaseTree(root: THREE.Object3D): void {
+  root.traverse((child) => {
+    const mesh = child as THREE.Mesh;
+    if (mesh.geometry && !shared.has(mesh.geometry)) mesh.geometry.dispose();
+    for (const material of materialsOf(mesh)) {
+      if (shared.has(material)) continue;
+      const fields = material as unknown as Record<string, unknown> & { uniforms?: Record<string, { value: unknown }> };
+      for (const key of TEXTURE_KEYS) {
+        const texture = fields[key] as THREE.Texture | null | undefined;
+        if (texture?.isTexture && !shared.has(texture)) texture.dispose();
+      }
+      for (const uniform of Object.values(fields.uniforms ?? {})) {
+        const texture = uniform.value as THREE.Texture | null;
+        if (texture?.isTexture && !shared.has(texture)) texture.dispose();
+      }
+      material.dispose();
+    }
+  });
+}
+
 const geometries = new Map<ModelName, THREE.BufferGeometry>();
 let palette: THREE.MeshStandardMaterial | null = null;
 let burnt: THREE.MeshStandardMaterial | null = null;
@@ -59,6 +109,7 @@ export async function loadModels(): Promise<void> {
   palette.roughness = 0.7;
   burnt = palette.clone();
   burnt.color.setHex(0x3a3232);
+  markShared(palette, palette.map, burnt, ...geometries.values());
 }
 
 // Original decoration props generated for this project, repacked into public/props by scripts/repack_glb.py.
@@ -79,6 +130,7 @@ export async function loadProps(names: string[]): Promise<void> {
           child.castShadow = true;
           child.receiveShadow = true;
         });
+        markTreeShared(gltf.scene);
         props.set(name, gltf.scene);
       } catch (error) {
         console.warn(`Decoration ${name} failed to load`, error);

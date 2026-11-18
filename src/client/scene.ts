@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { markShared, releaseTree } from "./assets";
 import { outOfHand, walkable, type Level } from "../shared/level";
 import type { GameState, Item } from "../shared/sim";
 import {
@@ -138,6 +139,7 @@ function createTalkBubble(): THREE.Sprite {
       ctx.stroke();
     }
     talkTexture = new THREE.CanvasTexture(canvas);
+    markShared(talkTexture);
     talkTexture.colorSpace = THREE.SRGBColorSpace;
   }
   const sprite = new THREE.Sprite(
@@ -262,11 +264,18 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
   // Frames longer than 50 ms are ignored: those are a hidden tab or a hiccup, not a slow device.
   let frameAverage = 1 / 60;
   let slowFor = 0;
+  // Building a kitchen and compiling its shaders makes a few slow frames that say nothing about the device; quality
+  // is only judged once things have settled.
+  let settling = 2;
   let pixelRatio = renderer.getPixelRatio();
   const adaptQuality = (dt: number) => {
     // A hidden tab is skipped; anything shorter than a quarter second is a real (if slow) frame. Ignoring frames over
     // 50 ms, as this once did, meant a device too slow for 20 fps never stepped its quality down at all.
     if (dt > 0.25 || document.hidden) return;
+    if (settling > 0) {
+      settling -= dt;
+      return;
+    }
     frameAverage += (dt - frameAverage) * 0.05;
     slowFor = frameAverage > 1 / 42 ? slowFor + dt : 0;
     if (slowFor < 2) return;
@@ -284,18 +293,27 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
   const daylight = { hemi: 0.38, key: 2.9, fill: 0.4, exposure: 0.92, env: 0.22 };
 
   // Tears down everything tied to the old layout and builds the new kitchen in its place.
+  // Things taken out of the scene for good, freed after the next frame (see releaseTree).
+  const trash: THREE.Object3D[] = [];
+  const discard = (...things: Array<THREE.Object3D | null | undefined>) => {
+    for (const thing of things) {
+      if (!thing) continue;
+      thing.removeFromParent();
+      trash.push(thing);
+    }
+  };
+
   const setLevel = (next: Level) => {
     if (next === level) return;
-    for (const view of resting.values()) view.mesh.removeFromParent();
-    for (const bar of bars.values()) bar.group.removeFromParent();
-    for (const fx of potFx.values()) world.remove(fx.badge, fx.steam);
-    for (const fire of fires.values()) fire.group.removeFromParent();
+    for (const view of resting.values()) discard(view.mesh);
+    for (const bar of bars.values()) discard(bar.group);
+    for (const fx of potFx.values()) discard(fx.badge, fx.steam);
+    for (const fire of fires.values()) discard(fire.group);
     resting.clear();
     bars.clear();
     potFx.clear();
     fires.clear();
-    world.remove(room, stations.group);
-    washBar?.group.removeFromParent();
+    discard(room, stations.group, washBar?.group);
     washBar = null;
     level = next;
     stations = createStations(level);
@@ -303,6 +321,8 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
     world.position.set(-level.width / 2, 0, -level.height / 2);
     world.add(room, stations.group);
     beltSteps = null;
+    settling = 2;
+    frameAverage = 1 / 60;
     applyMood();
   };
 
@@ -379,7 +399,7 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
     if (view?.signature === signature) return view;
     if (view) {
       popping.delete(view.mesh);
-      view.mesh.removeFromParent();
+      discard(view.mesh);
     }
     if (!item) return null;
     const next = createItem(item);
@@ -429,7 +449,7 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
       }
       for (const [to, view] of carried) {
         const left = resting.get(to);
-        if (left) left.mesh.removeFromParent();
+        if (left) discard(left.mesh);
         resting.set(to, view);
       }
     }
@@ -469,7 +489,7 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
     for (const [id, view] of flying) {
       if (live.has(id)) continue;
       dashFx.burst(view.x, 0.8, view.z, [0xfff1a8, 0x8fffe0, 0xc9a8ff], 8, 1.2, 0.1);
-      view.mesh.removeFromParent();
+      discard(view.mesh);
       flying.delete(id);
     }
   };
@@ -553,7 +573,7 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
     const burning = state.fires ?? {};
     for (const [index, fire] of fires) {
       if (burning[index] !== undefined) continue;
-      fire.group.removeFromParent();
+      discard(fire.group);
       fires.delete(index);
     }
     let sumX = 0;
@@ -583,7 +603,7 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
 
   const removeChef = (id: number, view: ChefView) => {
     if (view.held) popping.delete(view.held.mesh);
-    view.rig.group.removeFromParent();
+    discard(view.rig.group);
     chefs.delete(id);
   };
 
@@ -638,7 +658,7 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
       view.held = syncItem(view.held, player.held, view.rig.body);
       view.held?.mesh.position.set(0, 0.42, 0.42);
       if ((player.name ?? "") !== view.tagText) {
-        view.tag?.removeFromParent();
+        discard(view.tag);
         view.tagText = player.name ?? "";
         view.tag = view.tagText ? createLabel(view.tagText) : null;
         if (view.tag) {
@@ -714,7 +734,7 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
       popup.sprite.position.y = popup.baseY + (1 - (1 - t) ** 3) * 1.1;
       popup.sprite.material.opacity = t < 0.6 ? 1 : Math.max(0, 1 - (t - 0.6) / 0.4);
       if (t < 1) continue;
-      popup.sprite.removeFromParent();
+      discard(popup.sprite);
       popup.sprite.material.dispose();
       popups.splice(i, 1);
     }
@@ -852,6 +872,8 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
         polish.setEnabled(polished());
         if (polish.enabled) polish.render();
         else renderer.render(scene, camera);
+        // Only now, with the new things drawn (and their shaders in use), is it safe to free what was removed.
+        for (const thing of trash.splice(0)) releaseTree(thing);
       });
     },
   };
