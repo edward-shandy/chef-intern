@@ -19,6 +19,8 @@ interface AnimalLook {
   trousers?: number;
   // What hangs on the hips, if not the animal's tail.
   hips?: string;
+  // False for a chef whose head prop brings its own headwear (Icy's crown), so the toque is left off.
+  toque?: boolean;
 }
 const ANIMALS: Record<string, AnimalLook> = {
   mouse: { base: "rogue", fur: 0xa7abb8 },
@@ -29,7 +31,7 @@ const ANIMALS: Record<string, AnimalLook> = {
   fox: { base: "rogue", fur: 0xe8692a },
   pig: { base: "barbarian", fur: 0xf4a7b5 },
   elephant: { base: "barbarian", fur: 0x9aa7c4, trousers: 0x4a4f63 },
-  icy: { base: "rogue", fur: 0xfff4fa, jacket: 0xf7a8c8, trousers: 0xf7a8c8, hips: "skirt_icy" },
+  icy: { base: "rogue", fur: 0xfff4fa, jacket: 0xf7a8c8, trousers: 0xf7a8c8, hips: "skirt_icy", toque: false },
 };
 const TAILLESS = new Set(["frog"]);
 
@@ -145,7 +147,7 @@ export function createChef(seat: number, isLocal: boolean, character: string = s
   const toque = createToque();
   toque.position.y = TOQUE_HEIGHT;
   toque.traverse((child) => (child.castShadow = true));
-  figure.getObjectByName("head")?.add(toque);
+  if (animal?.toque !== false) figure.getObjectByName("head")?.add(toque);
   const knife = model("knife");
   knife.visible = false;
   figure.getObjectByName("handslotr")?.add(knife);

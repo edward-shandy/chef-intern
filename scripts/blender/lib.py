@@ -30,9 +30,12 @@ def hex_colour(value):
 _materials = {}
 
 
-def material(name, colour, rough=0.65, metal=0.0, emit=0.0, alpha=1.0):
-    """A Principled material, shared by name. `emit` > 0 makes it glow in its own colour."""
-    key = (name, colour, rough, metal, emit, alpha)
+def material(name, colour, rough=0.65, metal=0.0, emit=0.0, alpha=1.0, double=False):
+    """A Principled material, shared by name. `emit` > 0 makes it glow in its own colour.
+
+    Back faces are culled unless `double` is set: Blender's default (no culling) exports every material as
+    double-sided, which makes the game shade the hidden inside of every closed shape too."""
+    key = (name, colour, rough, metal, emit, alpha, double)
     if key in _materials:
         return _materials[key]
     mat = bpy.data.materials.new(name)
@@ -49,6 +52,7 @@ def material(name, colour, rough=0.65, metal=0.0, emit=0.0, alpha=1.0):
         bsdf.inputs["Alpha"].default_value = alpha
         mat.surface_render_method = "BLENDED"
     mat.diffuse_color = rgba
+    mat.use_backface_culling = not double
     _materials[key] = mat
     return mat
 
@@ -142,19 +146,30 @@ class Prop:
                 bm.faces.new((a[j], a[(j + 1) % sides], b[(j + 1) % sides], b[j]))
         return self._add(bm, mat, loc, rot, smooth=True, sharp=180)
 
-    def lathe(self, profile, loc, mat, segments=20, rot=(0, 0, 0), scale=(1, 1, 1), close_top=False, close_bottom=True):
-        """Spins a profile of (radius, height) points round Z: bottles, goblets, pots, finials."""
+    def lathe(self, profile, loc, mat, segments=20, rot=(0, 0, 0), scale=(1, 1, 1), close_top=False, close_bottom=True, arc=None, wave=None):
+        """Spins a profile of (radius, height) points round Z: bottles, goblets, pots, finials, skirts.
+
+        `arc` = (start, end) angles spins only part of the way (an open surface; give it a double-sided material).
+        `wave` = (count, depth) ripples the radius round the turn, growing towards the last profile point (folds)."""
         bm = bmesh.new()
         rings = []
-        for radius, height in profile:
+        full = arc is None
+        count = segments if full else segments + 1
+        for k, (radius, height) in enumerate(profile):
             ring = []
-            for i in range(segments):
-                a = 2 * math.pi * i / segments
-                ring.append(bm.verts.new((math.cos(a) * radius, math.sin(a) * radius, height)))
+            for i in range(count):
+                a = 2 * math.pi * i / segments if full else arc[0] + (arc[1] - arc[0]) * i / segments
+                r = radius
+                if wave:
+                    r += math.sin(a * wave[0]) * wave[1] * (k / max(1, len(profile) - 1))
+                ring.append(bm.verts.new((math.cos(a) * r, math.sin(a) * r, height)))
             rings.append(ring)
         for a, b in zip(rings, rings[1:]):
-            for i in range(segments):
-                bm.faces.new((a[i], a[(i + 1) % segments], b[(i + 1) % segments], b[i]))
+            for i in range(segments if full else count - 1):
+                bm.faces.new((a[i], a[(i + 1) % count], b[(i + 1) % count], b[i]))
+        if not full:
+            bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+            return self._add(bm, mat, loc, rot, scale, smooth=True, sharp=70)
         if close_bottom and profile[0][0] > 1e-4:
             bm.faces.new(list(reversed(rings[0])))
         if close_top and profile[-1][0] > 1e-4:
@@ -162,6 +177,42 @@ class Prop:
         bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-5)
         bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
         return self._add(bm, mat, loc, rot, scale, smooth=True, sharp=60)
+
+    def tube(self, path, radii, mat, sides=10, loc=(0, 0, 0), flat=1.0):
+        """A tapered tube swept along a path of points (x, y, z) with a radius at each: locks of hair, ribbons, vines.
+
+        `flat` < 1 squashes the cross-section sideways, so hair locks read as flat strands rather than pipes."""
+        from mathutils import Vector as V
+
+        bm = bmesh.new()
+        points = [V(p) for p in path]
+        rings = []
+        normal = None
+        for i, point in enumerate(points):
+            ahead = points[min(i + 1, len(points) - 1)] - points[max(i - 1, 0)]
+            ahead.normalize()
+            # A frame that turns smoothly along the path (parallel transport of the previous normal).
+            if normal is None:
+                normal = ahead.cross(V((0, 0, 1)) if abs(ahead.z) < 0.9 else V((1, 0, 0))).normalized()
+            else:
+                normal = (normal - ahead * normal.dot(ahead)).normalized()
+            side = ahead.cross(normal).normalized()
+            ring = []
+            for k in range(sides):
+                a = 2 * math.pi * k / sides
+                offset = normal * math.cos(a) * radii[i] * flat + side * math.sin(a) * radii[i]
+                ring.append(bm.verts.new(point + offset))
+            rings.append(ring)
+        for a, b in zip(rings, rings[1:]):
+            for k in range(sides):
+                bm.faces.new((a[k], a[(k + 1) % sides], b[(k + 1) % sides], b[k]))
+        if radii[0] > 1e-4:
+            bm.faces.new(list(reversed(rings[0])))
+        if radii[-1] > 1e-4:
+            bm.faces.new(rings[-1])
+        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-6)
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+        return self._add(bm, mat, loc, smooth=True, sharp=80)
 
     def prism(self, points, depth, loc, mat, rot=(0, 0, 0), bevel=0.0):
         """Extrudes a flat outline of (x, z) points along Y by `depth`: stars, crescents, plaques, arches."""

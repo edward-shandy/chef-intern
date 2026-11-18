@@ -271,7 +271,9 @@ function icy() {
   return { head, tail: skirt, tailName: "skirt_icy" };
 }
 
-const ANIMALS = { mouse, cat, bear, frog, penguin, fox, pig, elephant, icy };
+// Icy's head and gown are modelled in Blender now (scripts/blender/make_icy.py); her old builder above is kept for
+// reference but no longer written, so running this script never overwrites them.
+const ANIMALS = { mouse, cat, bear, frog, penguin, fox, pig, elephant };
 
 const exporter = new GLTFExporter();
 const write = async (name, object) => {
