@@ -91,7 +91,32 @@ for (const [name, size, rounded] of [
   ["apple-touch-icon.png", 180, false],
   ["icon-192.png", 192, true],
   ["icon-512.png", 512, true],
+  // The browser tab: an SVG favicon for modern browsers, with this PNG and the .ico below for the rest.
+  ["favicon-32.png", 32, true],
 ]) {
   writeFileSync(new URL(`../public/${name}`, import.meta.url), png(size, rounded));
   console.log(`wrote public/${name}`);
 }
+
+// favicon.ico for browsers (and bookmark tools) that ask for /favicon.ico directly: an ICO container holding PNG
+// images at 16, 32 and 48 pixels, which every current browser reads.
+const sizes = [16, 32, 48];
+const images = sizes.map((size) => png(size, true));
+const header = Buffer.alloc(6);
+header.writeUInt16LE(0, 0);
+header.writeUInt16LE(1, 2);
+header.writeUInt16LE(sizes.length, 4);
+let offset = 6 + 16 * sizes.length;
+const entries = sizes.map((size, i) => {
+  const entry = Buffer.alloc(16);
+  entry.writeUInt8(size, 0);
+  entry.writeUInt8(size, 1);
+  entry.writeUInt16LE(1, 4);
+  entry.writeUInt16LE(32, 6);
+  entry.writeUInt32LE(images[i].length, 8);
+  entry.writeUInt32LE(offset, 12);
+  offset += images[i].length;
+  return entry;
+});
+writeFileSync(new URL("../public/favicon.ico", import.meta.url), Buffer.concat([header, ...entries, ...images]));
+console.log("wrote public/favicon.ico");
