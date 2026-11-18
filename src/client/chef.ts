@@ -3,7 +3,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { clone } from "three/addons/utils/SkeletonUtils.js";
 import { seatCharacter } from "../shared/characters";
 import { playerSpeedFraction, type PlayerState } from "../shared/sim";
-import { decoration, model, MODEL_SCALE } from "./assets";
+import { decoration, model, MODEL_SCALE, markShared, markTreeShared } from "./assets";
 import { COLORS, mat, mesh } from "./models";
 
 // KayKit Adventurers characters (CC0), trimmed by scripts/trim_character.py; each seat starts as one of them.
@@ -62,6 +62,7 @@ export async function loadChefs(): Promise<void> {
     // Splitting clips by bone lets the legs keep running while the arms hold a carry pose.
     const split = (clip: THREE.AnimationClip, name: string, arms: boolean) =>
       new THREE.AnimationClip(name, clip.duration, clip.tracks.filter((track) => ARM_TRACK.test(track.name) === arms));
+    markTreeShared(gltf.scene);
     sources.push({
       scene: gltf.scene,
       clips: {
@@ -154,7 +155,10 @@ export function createChef(seat: number, isLocal: boolean, character: string = s
   group.add(figure);
 
   // A soft blob grounds the chef, and a coloured ring tells players apart; your own is brighter.
-  blobMap ??= blobTexture();
+  if (!blobMap) {
+    blobMap = blobTexture();
+    markShared(blobMap);
+  }
   const blob = mesh(
     new THREE.PlaneGeometry(1.05, 1.05),
     new THREE.MeshBasicMaterial({ map: blobMap, transparent: true, depthWrite: false }),

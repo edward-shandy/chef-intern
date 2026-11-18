@@ -1,7 +1,7 @@
 import * as THREE from "three";
-import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import type { Level } from "../shared/level";
-import { decoration } from "./assets";
+import { decoration, markShared } from "./assets";
+import { mergeStatic } from "./merge";
 import { canvasTexture, cylinder, mat, mesh, noise, shadowed } from "./models";
 
 // The Wizard's Keep: a vaulted castle hall around the kitchen. Stone walls with stained-glass windows, timber
@@ -114,6 +114,7 @@ function ripples(): THREE.CanvasTexture {
     ctx.putImageData(image, 0, 0);
   });
   rippleTexture.wrapS = rippleTexture.wrapT = THREE.RepeatWrapping;
+  markShared(rippleTexture);
   rippleTexture.colorSpace = THREE.NoColorSpace;
   return rippleTexture;
 }
@@ -489,7 +490,7 @@ export function createMagic(level: Level): { group: THREE.Group; view: MagicView
   const candle = decoration("magic_candle_float");
   if (candle) {
     const spots: Array<[number, number, number]> = [];
-    for (let i = 0; i < 110; i++) {
+    for (let i = 0; i < 80; i++) {
       const x = x0 + 0.6 + noise(i * 3.1) * (span - 1.2);
       const z = 0.3 + noise(i * 7.7 + 1) * (depth - 2);
       // Keep the air above the kitchen clear, apart from a row along its back wall.
@@ -587,9 +588,12 @@ export function createMagic(level: Level): { group: THREE.Group; view: MagicView
       }
       bubbles.instanceMatrix.needsUpdate = true;
     });
-    const glow = new THREE.PointLight(0x3fe0a0, 1.4, 5, 2);
-    glow.position.set(x, 0.3, height / 2);
-    group.add(glow);
+    // One green glow for the stream (the first one, in a kitchen with two), for the same reason.
+    if (column === columns[0]) {
+      const glow = new THREE.PointLight(0x3fe0a0, 1.4, 5, 2);
+      glow.position.set(columns.length > 1 ? (columns[0] + columns.at(-1)! + 1) / 2 : x, 0.3, height / 2);
+      group.add(glow);
+    }
     const count = 18;
     const positions = new Float32Array(count * 3);
     const motes = new THREE.Points(
@@ -614,11 +618,10 @@ export function createMagic(level: Level): { group: THREE.Group; view: MagicView
 
   // Warm light from the fireplace and the chandeliers, a soft one over the kitchen's back counters.
   const lights: Array<[number, number, number, number, number, number]> = [
+    // Only two: every point light is paid for on every pixel of every lit surface, and the hall is large.
+    // The halls themselves are lit by the moonlight key and the sky fill.
     [leftHall, 0.9, 0.2, 0xff8a3a, 5, 6],
-    [leftHall, 2.6, 6.5, 0xffc27a, 3.5, 10],
-    [rightHall, 2.6, 6.5, 0xffc27a, 3.5, 10],
     [width / 2, 2.4, 1.0, 0xffcf8a, 3, 8],
-    [width / 2, 2.6, height + 6, 0xffc27a, 3.5, 10],
   ];
   const fireplaceLight = new THREE.PointLight();
   lights.forEach(([x, y, z, colour, power, reach], i) => {
@@ -634,44 +637,10 @@ export function createMagic(level: Level): { group: THREE.Group; view: MagicView
     fireplaceLight.intensity = 5 + Math.sin(time * 11) * 0.5 + Math.sin(time * 17.3) * 0.35;
   });
 
-  group.add(mergeStatic(solid));
+  // Everything in the hall stands still, so it is merged into a few dozen draw calls. The hall casts no shadows (the
+  // sun's shadow only covers the kitchen anyway), which also keeps it out of the shadow pass.
+  group.add(mergeStatic(solid, false));
   return { group, view: { tick: (time) => ticks.forEach((tick) => tick(time)) } };
-}
-
-// Everything in the hall stands still, so it is merged into one mesh per look (material colour, gloss, glow):
-// thousands of stones, books, posts and wizards become a few dozen draw calls. The hall casts no shadows (the sun's
-// shadow only covers the kitchen anyway), which also keeps it out of the shadow pass.
-function mergeStatic(root: THREE.Object3D): THREE.Group {
-  root.updateMatrixWorld(true);
-  const buckets = new Map<string, { material: THREE.Material; parts: THREE.BufferGeometry[] }>();
-  root.traverse((child) => {
-    if (!(child instanceof THREE.Mesh)) return;
-    const material = child.material as THREE.MeshStandardMaterial;
-    const key = [
-      material.name,
-      material.color?.getHexString(),
-      material.emissive?.getHexString(),
-      material.emissiveIntensity,
-      material.roughness,
-      material.metalness,
-      child.geometry.index ? "i" : "n",
-      Object.keys(child.geometry.attributes).sort().join(","),
-    ].join("|");
-    const geometry = child.geometry.clone().applyMatrix4(child.matrixWorld);
-    const bucket = buckets.get(key) ?? { material, parts: [] };
-    bucket.parts.push(geometry);
-    buckets.set(key, bucket);
-  });
-  const merged = new THREE.Group();
-  for (const { material, parts } of buckets.values()) {
-    const geometry = mergeGeometries(parts);
-    for (const part of parts) part.dispose();
-    if (!geometry) continue;
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.receiveShadow = true;
-    merged.add(mesh);
-  }
-  return merged;
 }
 
 export function animateMagic(room: THREE.Group, time: number): void {

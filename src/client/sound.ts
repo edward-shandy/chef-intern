@@ -80,6 +80,9 @@ export function createSound(): Sound {
     track.volume = 0;
     track.preload = "auto";
   }
+  // The sad theme only plays after a lost round, so it is not downloaded up front (about 750 KB saved on every
+  // visit that never loses); playing it starts the download.
+  tracks.sad.preload = "none";
   const setLevel = (name: Track, level: number) => {
     levels[name] = level;
     const gain = gains[name];
