@@ -110,7 +110,8 @@ function wireVoice(voice: VoiceChat, localId: () => number | null): void {
   });
   render();
   try {
-    if (localStorage.getItem(VOICE_KEY) === "1") voice.setOn(true);
+    // Back in the call on entering a room, but muted: nobody is heard by surprise, and one tap on the mic talks.
+    if (localStorage.getItem(VOICE_KEY) === "1") voice.setOn(true, true);
   } catch {
     // Nothing remembered: voice starts off.
   }

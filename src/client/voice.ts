@@ -46,7 +46,8 @@ export interface VoiceChat {
   readonly status: VoiceStatus;
   // Whether the mic could be opened; false means listen-only.
   readonly hasMic: boolean;
-  setOn(on: boolean): Promise<void>;
+  // `startMuted` joins to listen only, with the mic off until the player unmutes; the mic is not even asked for yet.
+  setOn(on: boolean, startMuted?: boolean): Promise<void>;
   setMuted(muted: boolean): void;
   // Brings the links in line with who else has voice on.
   update(state: GameState | null, localId: number | null): void;
@@ -77,8 +78,15 @@ export function createVoiceChat(send: (message: ClientMessage) => void): VoiceCh
   let toggles = 0;
   let muted = false;
   let localId: number | null = null;
+  // The open microphone, held only while it is needed: voice on, not muted and someone else in the call. Muting or
+  // being alone lets go of it, so the browser's recording dot goes away; it is opened again when needed.
   let mic: MediaStream | null = null;
   let micMeter: Meter | null = null;
+  // Whether this browser has let us open the mic; false means listen-only.
+  let micAllowed = false;
+  // Whether the mic has actually been opened once; until then permission is unknown.
+  let micChecked = false;
+  let micOpening = false;
   let context: AudioContext | null = null;
   let ice: { servers: RTCIceServer[]; at: number } | null = null;
   let iceLoading: Promise<RTCIceServer[]> | null = null;
@@ -93,6 +101,66 @@ export function createVoiceChat(send: (message: ClientMessage) => void): VoiceCh
 
   const changed = () => listeners.forEach((listener) => listener());
   const micTrack = () => mic?.getAudioTracks()[0] ?? null;
+
+  const openMic = () =>
+    navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+
+  // Every link sends the current mic, or silence when there is none; no renegotiation is needed either way.
+  const sendMicToAll = () => {
+    for (const peer of peers.values()) peer.pc.getTransceivers()[0]?.sender.replaceTrack(micTrack()).catch(() => undefined);
+  };
+
+  const releaseMic = () => {
+    if (!mic) return;
+    for (const track of mic.getTracks()) {
+      track.onended = null;
+      track.stop();
+    }
+    micMeter?.source.disconnect();
+    micMeter = null;
+    mic = null;
+    sendMicToAll();
+  };
+
+  const useMic = (stream: MediaStream) => {
+    micChecked = true;
+    mic = stream;
+    micMeter = meterFor(stream);
+    const track = micTrack();
+    // The system can take the mic away (iOS "Stop audio recording?", a phone call, unplugging a headset); that
+    // shows as muted, and unmuting asks for it again.
+    if (track) {
+      track.onended = () => {
+        if (mic !== stream) return;
+        muted = true;
+        releaseMic();
+        changed();
+      };
+    }
+    sendMicToAll();
+  };
+
+  const micNeeded = () => on && !muted && micAllowed && others.size > 0;
+
+  // Opens or lets go of the mic to match micNeeded(), checking again after the (slow) open in case things changed.
+  const syncMic = async () => {
+    if (!micNeeded()) return releaseMic();
+    if (mic || micOpening) return;
+    micOpening = true;
+    let stream: MediaStream | null = null;
+    try {
+      stream = await openMic();
+    } catch {
+      // Refused (or no microphone): this chef stays in the call as a listener rather than pretending to send.
+      micAllowed = false;
+      muted = false;
+    }
+    micOpening = false;
+    if (stream && micNeeded() && !mic) useMic(stream);
+    else stream?.getTracks().forEach((track) => track.stop());
+    changed();
+    if (micNeeded() !== Boolean(mic)) syncMic();
+  };
 
   const iceServers = (): Promise<RTCIceServer[]> => {
     if (ice && performance.now() - ice.at < ICE_REFRESH_MS) return Promise.resolve(ice.servers);
@@ -286,7 +354,7 @@ export function createVoiceChat(send: (message: ClientMessage) => void): VoiceCh
     if (!on) return "connecting";
     const linked = [...peers.values()].some((peer) => peer.pc.connectionState === "connected");
     if (others.size && !linked) return "connecting";
-    return mic ? "live" : "listening";
+    return micAllowed ? "live" : "listening";
   };
 
   return {
@@ -300,10 +368,10 @@ export function createVoiceChat(send: (message: ClientMessage) => void): VoiceCh
       return status();
     },
     get hasMic() {
-      return mic !== null;
+      return micAllowed;
     },
 
-    async setOn(next) {
+    async setOn(next, startMuted = false) {
       if (next === wanted) return;
       wanted = next;
       const token = ++toggles;
@@ -313,20 +381,19 @@ export function createVoiceChat(send: (message: ClientMessage) => void): VoiceCh
         send({ type: "voice", on: false });
         closeAll();
         attempts.clear();
-        micMeter?.source.disconnect();
-        micMeter = null;
-        mic?.getTracks().forEach((track) => track.stop());
-        mic = null;
+        releaseMic();
         return changed();
       }
       // Created inside the click, which is what lets phones play the crew's voices.
       context ??= new AudioContext();
       context.resume().catch(() => undefined);
+      // The mic is asked for now, during the tap, so the permission prompt comes when the player expects it.
+      // Joining muted skips that: the prompt then comes with the first unmute, which is a tap too.
+      if (startMuted) muted = true;
       let stream: MediaStream | null = null;
       try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-        });
+        if (!startMuted) stream = await openMic();
+        micChecked ||= stream !== null;
       } catch {
         // No microphone, or permission refused: this chef can still hear everyone.
       }
@@ -336,11 +403,11 @@ export function createVoiceChat(send: (message: ClientMessage) => void): VoiceCh
         stream?.getTracks().forEach((track) => track.stop());
         return;
       }
-      mic = stream;
-      const track = micTrack();
-      if (track) track.enabled = !muted;
-      micMeter = mic && meterFor(mic);
+      micAllowed = startMuted || stream !== null;
       on = true;
+      // Kept only if someone is already in the call to hear it; otherwise let go until they are.
+      if (stream && micNeeded() && !mic) useMic(stream);
+      else stream?.getTracks().forEach((track) => track.stop());
       send({ type: "voice", on: true });
       for (const id of others) {
         if (offers(id)) startOffer(id).catch(() => undefined);
@@ -351,9 +418,29 @@ export function createVoiceChat(send: (message: ClientMessage) => void): VoiceCh
 
     setMuted(next) {
       muted = next;
-      const track = micTrack();
-      if (track) track.enabled = !muted;
       changed();
+      // The first unmute after joining muted asks for the mic straight away, inside the tap, even with nobody else
+      // in the call yet, so the permission prompt never pops up later in the middle of a round.
+      if (!muted && on && !micChecked && !micOpening) {
+        micOpening = true;
+        openMic().then(
+          (stream) => {
+            micOpening = false;
+            micChecked = true;
+            if (micNeeded() && !mic) useMic(stream);
+            else stream.getTracks().forEach((track) => track.stop());
+            changed();
+          },
+          () => {
+            micOpening = false;
+            micAllowed = false;
+            muted = false;
+            changed();
+          },
+        );
+        return;
+      }
+      syncMic();
     },
 
     update(state, nextLocalId) {
@@ -367,6 +454,7 @@ export function createVoiceChat(send: (message: ClientMessage) => void): VoiceCh
       const same = next.size === others.size && [...next].every((id) => others.has(id));
       others = next;
       if (!on) return;
+      if (!same) syncMic();
       for (const id of [...peers.keys()]) if (!others.has(id)) closePeer(id);
       for (const id of others) if (!peers.has(id) && offers(id)) startOffer(id).catch(() => undefined);
       if (!same) changed();
