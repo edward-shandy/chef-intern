@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { CHARACTERS } from "../shared/characters";
 import type { PlayerState } from "../shared/sim";
-import { animateChef, createChef } from "./chef";
+import { animateChef, createChef, poseChef, type ResultPose } from "./chef";
 
 // Little 3D portraits of every chef for the lobby, rendered once from the real models so they match the game.
 const portraits = new Map<string, string>();
@@ -69,4 +69,55 @@ const IDLE_POSE: PlayerState = {
   dashTime: 0,
   dashCooldown: 0,
   onPad: -1,
+  stats: { served: 0, chopped: 0, washed: 0, doused: 0 },
+  voice: false,
 };
+
+// ---------------------------------------------------------------- results poses
+
+const POSE_SIZE = 320;
+// Frames of each results animation; the screen flips through them, a little like a cartoon flip-book.
+export const POSE_FRAMES = 8;
+const poseFrames = new Map<string, string[]>();
+let poseRenderer: THREE.WebGLRenderer | null = null;
+let poseScene: THREE.Scene | null = null;
+let poseCamera: THREE.PerspectiveCamera | null = null;
+
+// Whole-body frames of a chef cheering or crying, rendered from the real model the first time they are asked for
+// and kept after that. The renderer is made once and reused, so a game over costs a few dozen small renders.
+export function posesOf(character: string, pose: ResultPose): string[] {
+  const key = `${character}:${pose}`;
+  const cached = poseFrames.get(key);
+  if (cached) return cached;
+  if (!poseRenderer || !poseScene || !poseCamera) {
+    poseRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+    poseRenderer.setSize(POSE_SIZE, POSE_SIZE, false);
+    poseRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+    poseRenderer.toneMappingExposure = 1.05;
+    poseScene = new THREE.Scene();
+    poseScene.add(new THREE.HemisphereLight(0xfff4e6, 0x6a5a7c, 1.4));
+    const key = new THREE.DirectionalLight(0xfff0d8, 2.4);
+    key.position.set(-1.5, 3, 3);
+    const rim = new THREE.DirectionalLight(0xbfd4ff, 1.1);
+    rim.position.set(2, 2, -2);
+    poseScene.add(key, rim);
+    // Head to toe, with room above for arms thrown up in a cheer.
+    poseCamera = new THREE.PerspectiveCamera(30, 1, 0.1, 20);
+    poseCamera.position.set(0.45, 1.0, 3.3);
+    poseCamera.lookAt(0, 0.72, 0);
+  }
+  const rig = createChef(0, false, character);
+  rig.group.children.forEach((child, i) => (child.visible = i === 0));
+  rig.group.rotation.y = 0.2;
+  poseScene.add(rig.group);
+  const frames: string[] = [];
+  for (let i = 0; i < POSE_FRAMES; i++) {
+    // A cheer is spread over its whole clip; a sob loops over a short shake of the shoulders.
+    poseChef(rig, pose, pose === "cheer" ? 0.15 + i * 0.16 : i * (0.7 / POSE_FRAMES));
+    poseRenderer.render(poseScene, poseCamera);
+    frames.push(poseRenderer.domElement.toDataURL("image/png"));
+  }
+  poseScene.remove(rig.group);
+  poseFrames.set(key, frames);
+  return frames;
+}

@@ -73,6 +73,10 @@ interface ChefView {
   // Name floating over the chef, and the text it was drawn for.
   tag: THREE.Sprite | null;
   tagText: string;
+  // Speech bubble shown while this chef is heard on voice chat; built the first time they talk.
+  talk: THREE.Sprite | null;
+  // 0..1, eased in and out, so the bubble pops up and fades rather than blinking.
+  talkAmount: number;
 }
 
 interface Popup {
@@ -88,6 +92,58 @@ export interface Frame {
   target: number | null;
   // Station under the mouse that is not the target, shown with the cyan brackets.
   pointed: number | null;
+  // Chefs heard talking on voice chat right now.
+  speaking?: ReadonlySet<number>;
+}
+
+// A green speech bubble with a little speaker and sound waves, floated over a chef who is talking on voice chat.
+let talkTexture: THREE.CanvasTexture | null = null;
+function createTalkBubble(): THREE.Sprite {
+  if (!talkTexture) {
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 128;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "#1d3a28";
+    ctx.beginPath();
+    ctx.arc(64, 58, 50, 0, Math.PI * 2);
+    ctx.moveTo(48, 100);
+    ctx.lineTo(64, 124);
+    ctx.lineTo(80, 100);
+    ctx.fill();
+    ctx.fillStyle = "#6fdc8c";
+    ctx.beginPath();
+    ctx.arc(64, 58, 43, 0, Math.PI * 2);
+    ctx.moveTo(53, 96);
+    ctx.lineTo(64, 113);
+    ctx.lineTo(75, 96);
+    ctx.fill();
+    // The speaker: a box and a cone, then two waves.
+    ctx.fillStyle = "#10331f";
+    ctx.beginPath();
+    ctx.moveTo(34, 49);
+    ctx.lineTo(45, 49);
+    ctx.lineTo(60, 36);
+    ctx.lineTo(60, 80);
+    ctx.lineTo(45, 67);
+    ctx.lineTo(34, 67);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "#10331f";
+    ctx.lineWidth = 7;
+    ctx.lineCap = "round";
+    for (const radius of [11, 23]) {
+      ctx.beginPath();
+      ctx.arc(62, 58, radius, -0.75, 0.75);
+      ctx.stroke();
+    }
+    talkTexture = new THREE.CanvasTexture(canvas);
+    talkTexture.colorSpace = THREE.SRGBColorSpace;
+  }
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: talkTexture, depthTest: false, transparent: true, fog: false }),
+  );
+  sprite.renderOrder = 6;
+  return sprite;
 }
 
 export interface KitchenView {
@@ -466,7 +522,7 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
     chefs.delete(id);
   };
 
-  const syncChefs = (state: GameState, localId: number | null, dt: number, time: number) => {
+  const syncChefs = (state: GameState, localId: number | null, dt: number, time: number, speaking?: ReadonlySet<number>) => {
     for (const [id, view] of chefs) {
       const player = state.players.find((other) => other.id === id);
       // A rig built before we knew our own seat is rebuilt so the right chef gets the bright ring.
@@ -478,7 +534,17 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
       if (!view) {
         const isLocal = player.id === localId;
         const character = player.character;
-        view = { rig: createChef(player.id, isLocal, character), isLocal, character, held: null, spray: createSpray(), tag: null, tagText: "" };
+        view = {
+          rig: createChef(player.id, isLocal, character),
+          isLocal,
+          character,
+          held: null,
+          spray: createSpray(),
+          tag: null,
+          tagText: "",
+          talk: null,
+          talkAmount: 0,
+        };
         view.rig.group.add(view.spray);
         view.rig.group.rotation.y = player.facing;
         world.add(view.rig.group);
@@ -516,6 +582,20 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
           view.rig.group.add(view.tag);
         }
       }
+      // The talk bubble eases in while the chef is heard and bobs gently, sitting above the name tag if there is one.
+      const talking = speaking?.has(player.id) ?? false;
+      view.talkAmount += ((talking ? 1 : 0) - view.talkAmount) * (1 - Math.exp(-(talking ? 16 : 6) * dt));
+      if (view.talkAmount > 0.02) {
+        if (!view.talk) {
+          view.talk = createTalkBubble();
+          view.rig.group.add(view.talk);
+        }
+        const size = 0.72 * view.talkAmount * (1 + Math.sin(time * 9) * 0.05 * view.talkAmount);
+        view.talk.visible = true;
+        view.talk.scale.set(size, size, 1);
+        view.talk.position.set(0, (view.tag ? 2.25 : 1.85) + Math.sin(time * 3 + player.id) * 0.03, 0);
+        view.talk.material.opacity = Math.min(1, view.talkAmount * 1.4);
+      } else if (view.talk) view.talk.visible = false;
       view.spray.visible = Boolean(player.spraying);
       if (view.spray.visible) animateSpray(view.spray, time, SPRAY_RANGE);
     }
@@ -656,7 +736,7 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
       renderer.setAnimationLoop(() => {
         const dt = Math.min(clock.getDelta(), 0.1);
         const time = clock.elapsedTime;
-        const { state, localId, target, pointed } = onFrame();
+        const { state, localId, target, pointed, speaking } = onFrame();
         const shown = state ?? EMPTY_STATE;
         syncRestingItems(shown, time);
         syncDishes(shown);
@@ -664,7 +744,7 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
         animateBelts(stations, dt);
         animatePads(stations, time);
         syncFires(shown, time);
-        syncChefs(shown, localId, dt, time);
+        syncChefs(shown, localId, dt, time, speaking);
         followChef(shown, localId, dt);
         dashFx.update(shown.players, dt);
         syncMarkers(target, pointed, time);

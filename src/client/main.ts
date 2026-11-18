@@ -9,6 +9,7 @@ import { renderPortraits } from "./portraits";
 import { wireFullscreen } from "./fullscreen";
 import { preventPageZoom, wireCanvasZoom, wireMenu } from "./settings";
 import { createGuide } from "./guide";
+import { createResults } from "./results";
 import { createHud } from "./hud";
 import { createKeyboard } from "./input";
 import { connectRoom, type ConnectionState } from "./net";
@@ -16,6 +17,7 @@ import { createKitchenView } from "./scene";
 import { createSound } from "./sound";
 import { createTouchControls, wantsTouchControls } from "./touch";
 import { createClientWorld } from "./world";
+import { createVoiceChat, type VoiceChat } from "./voice";
 import "./style.css";
 
 const PING_EVERY_MS = 4000;
@@ -42,6 +44,81 @@ function wireAudioButtons(): void {
     render();
   });
   render();
+}
+
+// The header mic button and the two voice rows in the menu. The button joins the call when voice is off and
+// mutes or unmutes once in; M does the same as the mute switch.
+function wireVoice(voice: VoiceChat, localId: () => number | null): void {
+  // Very old browsers have no WebRTC; the controls simply stay hidden there.
+  if (!window.RTCPeerConnection || !navigator.mediaDevices?.getUserMedia) return;
+  const button = element("#mic-button");
+  const toggle = element("#voice");
+  const micSwitch = element("#mic");
+  const micRow = element("#mic-row");
+  const note = element("#voice-state");
+  button.hidden = false;
+  element("#voice-row").hidden = false;
+
+  const LABELS = {
+    off: ["Join voice chat", ""],
+    connecting: ["Connecting voice chat…", "connecting…"],
+    live: ["Mute microphone (M)", "on"],
+    muted: ["Unmute microphone (M)", "muted"],
+    listening: ["Listening only: the microphone is blocked", "listening only"],
+  } as const;
+  const render = () => {
+    const status = voice.status;
+    const state = status === "off" || status === "listening" ? status : voice.muted ? "muted" : status === "connecting" && !voice.hasMic ? "connecting" : "live";
+    const [label, text] = LABELS[state];
+    button.dataset.state = state;
+    button.setAttribute("aria-label", label);
+    button.title = label;
+    toggle.setAttribute("aria-checked", String(voice.on));
+    micRow.hidden = !voice.on || status === "listening";
+    micSwitch.setAttribute("aria-checked", String(!voice.muted));
+    // While links are still being made the note says so, even with the mic already live.
+    note.textContent = status === "connecting" ? "· connecting…" : text && `· ${text}`;
+  };
+  const toggleMute = () => voice.setMuted(!voice.muted);
+  button.addEventListener("click", () => {
+    if (!voice.on || voice.status === "listening") voice.setOn(!voice.on);
+    else toggleMute();
+    // Focus is let go, so Enter (start) or Space later in the game never presses this button by accident.
+    button.blur();
+  });
+  toggle.addEventListener("click", () => {
+    voice.setOn(!voice.on);
+    toggle.blur();
+  });
+  micSwitch.addEventListener("click", () => {
+    toggleMute();
+    micSwitch.blur();
+  });
+  window.addEventListener("keydown", (event) => {
+    const typing = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement;
+    if (event.code === "KeyM" && !event.repeat && !typing && voice.on) toggleMute();
+  });
+  // The choice is remembered on this device: someone who had voice on rejoins the call in their next kitchen.
+  const VOICE_KEY = "chef-intern-voice";
+  voice.onChange(() => {
+    render();
+    try {
+      localStorage.setItem(VOICE_KEY, voice.on ? "1" : "0");
+    } catch {
+      // Without storage the choice just lasts this visit.
+    }
+  });
+  render();
+  try {
+    if (localStorage.getItem(VOICE_KEY) === "1") voice.setOn(true);
+  } catch {
+    // Nothing remembered: voice starts off.
+  }
+  // A green ring round the button while this chef is heard talking.
+  window.setInterval(() => {
+    const id = localId();
+    button.dataset.talking = String(id !== null && voice.speaking().has(id));
+  }, 120);
 }
 
 // Back to the front door, where a new kitchen can be created or another one joined.
@@ -97,12 +174,16 @@ function playRoom(roomCode: string): void {
   const currentLevel = () => LEVELS[world.latest?.level ?? 0];
   const hud = createHud((level) => room.send({ type: "level", level }));
   // Each kitchen's briefing pops up in its lobby, and the Guide button brings it back at any time.
+  const results = createResults();
   const guide = createGuide(() => room.send({ type: "ready" }));
   element("#guide-button").hidden = false;
   element("#room-code").textContent = roomCode;
   element("#leave").addEventListener("click", leaveRoom);
   element("#leave-lobby").addEventListener("click", leaveRoom);
   const sent = { moveX: 0, moveZ: 0, use: false, aim: null as number | null, dash: false };
+  // Room messages go through `room`, which is opened just below, before any voice message can be sent.
+  const voice = createVoiceChat((message) => room.send(message));
+  wireVoice(voice, () => world.localId);
   let connection: ConnectionState = "connecting";
   let ping: number | null = null;
   let shown: GameState | null = null;
@@ -139,6 +220,7 @@ function playRoom(roomCode: string): void {
         world.disconnect();
         ping = null;
         hud.update(null, null);
+        voice.update(null, null);
       }
       renderStatus();
     },
@@ -146,10 +228,13 @@ function playRoom(roomCode: string): void {
       const now = performance.now();
       if (message.type === "welcome") {
         world.welcome(message.id, now);
+        voice.onWelcome();
         if (nameInput.value.trim()) room.send({ type: "name", name: nameInput.value });
         if (savedCharacter) room.send({ type: "character", character: savedCharacter });
         // Forces whatever is held down right now to be sent again under the new session.
         Object.assign(sent, { moveX: 0, moveZ: 0, use: false, aim: null, dash: false });
+      } else if (message.type === "rtc") {
+        voice.onSignal(message.from, message.data);
       } else if (message.type === "pong") {
         ping = Math.round(now - message.t);
         renderStatus();
@@ -158,8 +243,10 @@ function playRoom(roomCode: string): void {
         world.onSnapshot(message, message.acks, now);
         hud.update(message, world.localId);
         guide.update(message, world.localId);
+        results.update(message, world.localId);
         picker.update(message, world.localId);
         sound.update(message, world.localId);
+        voice.update(message, world.localId);
         if (countChanged) renderStatus();
       }
     },
@@ -288,10 +375,16 @@ function playRoom(roomCode: string): void {
       );
       canvas.style.cursor = aim === null ? "default" : "pointer";
       // A pointed-at station that is not the active target is out of reach, and gets its own outline.
-      return { state: shown, localId: world.localId, target, pointed: pointer.tile === target ? null : pointer.tile };
+      return {
+        state: shown,
+        localId: world.localId,
+        target,
+        pointed: pointer.tile === target ? null : pointer.tile,
+        speaking: voice.speaking(),
+      };
     });
 
-    if (import.meta.env.DEV) Object.assign(window, { __world: world, __view: view, __shown: () => shown });
+    if (import.meta.env.DEV) Object.assign(window, { __world: world, __view: view, __shown: () => shown, __hud: hud, __results: results, __voice: voice });
   };
 
   const decorNames = LEVELS.flatMap(({ decor }) => [
