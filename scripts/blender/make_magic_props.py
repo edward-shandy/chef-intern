@@ -260,12 +260,12 @@ def timber_frame(p, width, height, seed):
     r = rng(seed)
     for side in (-1, 1):
         x = side * (width / 2 - 0.07)
-        p.box((0.14, 0.12, height), (x, -0.04, height / 2), M.oak_dark, bevel=0.018, segments=2)
+        p.box((0.14, 0.12, height), (x, -0.04, height / 2), M.oak_dark, bevel=0.018, segments=1)
         # Bolts and an iron strap where the brace meets the post.
         for bz in (height - 0.62, 0.6):
             p.sphere(0.018, (x, -0.105, bz), M.iron, segments=6, rings=4)
     beam_z = height - 0.2
-    p.box((width, 0.14, 0.16), (0, -0.05, beam_z), M.oak_dark, bevel=0.02, segments=2)
+    p.box((width, 0.14, 0.16), (0, -0.05, beam_z), M.oak_dark, bevel=0.02, segments=1)
     # Braces run from each post up to the beam.
     length = 0.62
     for side in (-1, 1):
@@ -849,7 +849,7 @@ def wall_upper():
     def in_window(x, z):
         return inside_pointed_arch(x, z - bottom, win_w, spring, margin=0.14)
 
-    stone_wall(p, WALL_W, UPPER_H, WALL_D, seed=51, skip=in_window, course=0.3, wide=True)
+    stone_wall(p, WALL_W, UPPER_H, WALL_D, seed=51, skip=in_window, course=0.3, wide=True, chamfer=0)
     string_course(p, WALL_W, 0.0, 1)
     outline = [(x, z + bottom) for x, z in pointed_arch(win_w, spring)]
     p.prism(outline, 0.012, (0, 0.03, 0), M.lead)
@@ -886,7 +886,7 @@ def wall_upper():
 def wall_tapestry():
     """The middle tier, second kind: a great hanging tapestry with the keep's crest between two torches' sconces."""
     p = Prop("magic_wall_tapestry")
-    stone_wall(p, WALL_W, UPPER_H, WALL_D, seed=63, course=0.3, wide=True)
+    stone_wall(p, WALL_W, UPPER_H, WALL_D, seed=63, course=0.3, wide=True, chamfer=0)
     string_course(p, WALL_W, 0.0, 2)
     top = UPPER_H - 0.45
     p.cylinder(0.025, 1.45, (0, -0.1, top), M.brass, rot=(0, math.pi / 2, 0), verts=10)
@@ -914,7 +914,7 @@ def wall_tapestry():
 def wall_top():
     """The top tier, up into the rafters: rough stone, an arrow slit, and a great oak roof truss pinned to the wall."""
     p = Prop("magic_wall_top")
-    stone_wall(p, WALL_W, TOP_H, WALL_D, seed=77, course=0.34, wide=True, skip=lambda x, z: abs(x) < 0.08 and 1.4 < z < 2.4)
+    stone_wall(p, WALL_W, TOP_H, WALL_D, seed=77, course=0.34, wide=True, chamfer=0, skip=lambda x, z: abs(x) < 0.08 and 1.4 < z < 2.4)
     string_course(p, WALL_W, 0.0, 3)
     p.box((0.12, 0.05, 1.0), (0, 0.04, 1.9), M.recess, bevel=0)
     # The truss: a tie beam, two rafters meeting at the top, a king post and two struts, bolted with iron.
@@ -968,7 +968,9 @@ def channel_wall():
     # Moss: soft green lumps along the waterline and creeping over the coping edge.
     for i in range(7):
         my = -0.45 + i * 0.15 + r.uniform(-0.04, 0.04)
-        p.sphere(r.uniform(0.035, 0.06), (-0.04, my, -CHANNEL_DEPTH + 0.2 + r.uniform(-0.04, 0.04)), M.leaf, scale=(0.5, 1.6, 0.7), segments=8, rings=6)
+        if i % 2:
+            continue
+        p.sphere(r.uniform(0.04, 0.065), (-0.04, my, -CHANNEL_DEPTH + 0.2 + r.uniform(-0.04, 0.04)), M.leaf, scale=(0.5, 1.6, 0.7), segments=6, rings=4)
     for i in range(4):
         my = -0.4 + i * 0.27 + r.uniform(-0.05, 0.05)
         p.sphere(r.uniform(0.04, 0.06), (-0.06, my, -0.06), M.leaf_light if i % 2 else M.leaf, scale=(0.8, 1.8, 0.45), segments=8, rings=6)
@@ -1166,9 +1168,9 @@ def rail_post():
     brass knob on top. Origin at its foot."""
     p = Prop("magic_rail_post")
     p.box((0.16, 0.16, 0.06), (0, 0, 0.03), M.stone_light, bevel=0.015, segments=1)
-    p.lathe([(0.06, 0.0), (0.065, 0.04), (0.045, 0.08), (0.04, 0.42), (0.05, 0.45), (0.04, 0.48), (0.04, 0.56), (0.055, 0.6), (0.0, 0.61)], (0, 0, 0.06), M.oak, segments=12)
+    p.lathe([(0.06, 0.0), (0.065, 0.04), (0.045, 0.08), (0.04, 0.42), (0.05, 0.45), (0.04, 0.48), (0.04, 0.56), (0.055, 0.6), (0.0, 0.61)], (0, 0, 0.06), M.oak, segments=8)
     p.torus(0.05, 0.012, (0, 0, 0.56), M.iron, segments=16, sides=6)
-    p.sphere(0.055, (0, 0, 0.72), M.brass, segments=14, rings=10)
+    p.sphere(0.055, (0, 0, 0.72), M.brass, segments=8, rings=6)
     p.cylinder(0.03, 0.03, (0, 0, 0.675), M.brass, verts=10)
     p.export(os.path.join(OUT, "magic_rail_post.glb"))
 
@@ -1187,9 +1189,7 @@ def rail_rope():
         (y0, z0), (y1, z1) = points[i], points[i + 1]
         length = math.hypot(y1 - y0, z1 - z0)
         tilt = math.atan2(z1 - z0, y1 - y0)
-        p.cylinder(0.022, length + 0.004, (0, (y0 + y1) / 2, (z0 + z1) / 2), rope, rot=(math.pi / 2 + tilt, 0, 0), verts=8)
-        # Twist marks: slim dark bands every segment, so it reads as rope rather than a pipe.
-        p.torus(0.022, 0.006, (0, (y0 + y1) / 2, (z0 + z1) / 2), rope_dark, rot=(math.pi / 2 + tilt + 0.5, 0.35, 0), segments=10, sides=4)
+        p.cylinder(0.022, length + 0.004, (0, (y0 + y1) / 2, (z0 + z1) / 2), rope if i % 2 else rope_dark, rot=(math.pi / 2 + tilt, 0, 0), verts=6, cap=False)
     p.export(os.path.join(OUT, "magic_rail_rope.glb"))
 
 

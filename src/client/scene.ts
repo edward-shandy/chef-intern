@@ -264,7 +264,9 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
   let slowFor = 0;
   let pixelRatio = renderer.getPixelRatio();
   const adaptQuality = (dt: number) => {
-    if (dt > 0.05 || document.hidden) return;
+    // A hidden tab is skipped; anything shorter than a quarter second is a real (if slow) frame. Ignoring frames over
+    // 50 ms, as this once did, meant a device too slow for 20 fps never stepped its quality down at all.
+    if (dt > 0.25 || document.hidden) return;
     frameAverage += (dt - frameAverage) * 0.05;
     slowFor = frameAverage > 1 / 42 ? slowFor + dt : 0;
     if (slowFor < 2) return;
@@ -345,6 +347,14 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
     // the stream adding warm and green pools of their own. The kitchen stays bright enough to read every station.
     // Bloom is kept low and only for real light sources (flames, glass), so nothing glares.
     polish.setBloom(level.theme === "magic" ? 0.16 : 0.36, level.theme === "magic" ? 1.3 : 1.05);
+    // The castle hall is big: ambient occlusion (a second full draw of the scene) is left off there, and the
+    // resolution is capped at 1.5x, which on a retina screen draws less than 60% of the pixels.
+    polish.setAmbientOcclusion(level.theme !== "magic");
+    if (level.theme === "magic" && pixelRatio > 1.5) {
+      pixelRatio = 1.5;
+      renderer.setPixelRatio(pixelRatio);
+      resize();
+    }
     if (level.theme === "magic") {
       hemi.intensity = 0.36;
       hemi.color.setHex(0xd2c8ff);

@@ -489,7 +489,7 @@ export function createMagic(level: Level): { group: THREE.Group; view: MagicView
   const candle = decoration("magic_candle_float");
   if (candle) {
     const spots: Array<[number, number, number]> = [];
-    for (let i = 0; i < 110; i++) {
+    for (let i = 0; i < 80; i++) {
       const x = x0 + 0.6 + noise(i * 3.1) * (span - 1.2);
       const z = 0.3 + noise(i * 7.7 + 1) * (depth - 2);
       // Keep the air above the kitchen clear, apart from a row along its back wall.
@@ -587,9 +587,12 @@ export function createMagic(level: Level): { group: THREE.Group; view: MagicView
       }
       bubbles.instanceMatrix.needsUpdate = true;
     });
-    const glow = new THREE.PointLight(0x3fe0a0, 1.4, 5, 2);
-    glow.position.set(x, 0.3, height / 2);
-    group.add(glow);
+    // One green glow for the stream (the first one, in a kitchen with two), for the same reason.
+    if (column === columns[0]) {
+      const glow = new THREE.PointLight(0x3fe0a0, 1.4, 5, 2);
+      glow.position.set(columns.length > 1 ? (columns[0] + columns.at(-1)! + 1) / 2 : x, 0.3, height / 2);
+      group.add(glow);
+    }
     const count = 18;
     const positions = new Float32Array(count * 3);
     const motes = new THREE.Points(
@@ -614,11 +617,10 @@ export function createMagic(level: Level): { group: THREE.Group; view: MagicView
 
   // Warm light from the fireplace and the chandeliers, a soft one over the kitchen's back counters.
   const lights: Array<[number, number, number, number, number, number]> = [
+    // Only two: every point light is paid for on every pixel of every lit surface, and the hall is large.
+    // The halls themselves are lit by the moonlight key and the sky fill.
     [leftHall, 0.9, 0.2, 0xff8a3a, 5, 6],
-    [leftHall, 2.6, 6.5, 0xffc27a, 3.5, 10],
-    [rightHall, 2.6, 6.5, 0xffc27a, 3.5, 10],
     [width / 2, 2.4, 1.0, 0xffcf8a, 3, 8],
-    [width / 2, 2.6, height + 6, 0xffc27a, 3.5, 10],
   ];
   const fireplaceLight = new THREE.PointLight();
   lights.forEach(([x, y, z, colour, power, reach], i) => {

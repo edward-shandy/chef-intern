@@ -56,11 +56,12 @@ const OWN_CATCH_DELAY = 0.3;
 // Pacing by number of chefs, tuned so one person alone can keep up: each recipe's
 // time limit is scaled by ORDER_TIME_SCALE, a new order arrives every ORDER_INTERVAL
 // seconds, and at most MAX_ORDERS wait at once. Index 0 is a solo chef.
-const ORDER_TIME_SCALE = [1, 0.8, 0.7, 0.62];
-const ORDER_INTERVAL = [42, 24, 17, 13];
-const MAX_ORDERS = [2, 3, 4, 4];
+const ORDER_TIME_SCALE = [1, 0.75, 0.65, 0.58];
+const ORDER_INTERVAL = [40, 22, 16, 12];
+const MAX_ORDERS = [2, 3, 4, 5];
 // A kitchen's target score is written for one chef; bigger crews must earn this many times more.
-export const TARGET_SCALE = [1, 1.8, 2.6, 3.3];
+// Crews split the jobs (one chops while another cooks and washes), so two chefs do well over twice what one does.
+export const TARGET_SCALE = [1, 2.4, 3.4, 4.2];
 
 export type Item =
   // chop runs 0..1; an ingredient counts as chopped at 1. Grilled ingredients use cook instead, on the pot's scale.

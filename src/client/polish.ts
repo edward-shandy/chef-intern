@@ -92,6 +92,8 @@ export interface Polish {
   setEnabled(on: boolean): void;
   // How strong the glow is and how bright something must be to glow; each theme picks its own.
   setBloom(strength: number, threshold: number): void;
+  // Ambient occlusion off for heavy scenes; once degrade() has dropped it, it stays off.
+  setAmbientOcclusion(on: boolean): void;
   setSize(width: number, height: number): void;
   render(): void;
 }
@@ -127,6 +129,7 @@ export function createPolish(renderer: THREE.WebGLRenderer, scene: THREE.Scene, 
   if (smaa) composer.addPass(smaa);
 
   let enabled = false;
+  let aoDropped = false;
   const syncUniforms = () => {
     const { width, height } = renderer.getDrawingBufferSize(new THREE.Vector2());
     outline.uniforms.resolution.value.set(width, height);
@@ -145,10 +148,14 @@ export function createPolish(renderer: THREE.WebGLRenderer, scene: THREE.Scene, 
       for (const pass of [ao, smaa]) {
         if (pass?.enabled) {
           pass.enabled = false;
+          if (pass === ao) aoDropped = true;
           return true;
         }
       }
       return false;
+    },
+    setAmbientOcclusion(on) {
+      if (ao) ao.enabled = on && !aoDropped;
     },
     setEnabled(on) {
       enabled = on;

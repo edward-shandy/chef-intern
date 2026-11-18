@@ -26,7 +26,7 @@ Open http://localhost:5173. Without `?room=` in the URL you get the front door: 
 
 **How a round works:** a new room opens on its lobby screen, which covers the kitchen: it shows the room code, who has taken which of the four seats, a button to copy the invite link, and a way back to the front door. Anyone in the room starts the service with the button or `Enter`; a round then lasts 15 minutes (`ROUND_SECONDS` in `sim.ts`). Joining a room whose round is already running drops you straight into the kitchen. The `Leave` button in the header returns to the front door at any time. Orders appear on the ticket rail and cost 10 points if they expire. Serve a matching plate at the green window for the recipe's points plus up to 10 for speed. Each kitchen has a target score, shown next to the score with a bar that fills towards it. When time is up the round is won if the score reached the target: `E` or a click (after a 3 second pause) then moves on to the next kitchen, and after the last one starts over from the first. A lost round replays the same kitchen.
 
-Targets are written for one chef (`target` in `src/shared/level.ts`: 320, 400, 360, 380, 420 and 400 for the six kitchens) and multiplied by `TARGET_SCALE` in `sim.ts` for bigger crews (x1.8, x2.6, x3.3 for 2, 3, 4 chefs). The target is charged by the second at the rate of the crew in the kitchen at that moment: every second played adds its share for the chefs present, and the time left is counted at the current crew's rate. A full round with one crew size gives exactly the numbers above; if a chef joins or leaves half way, the target lands between the two, and in the lobby it simply follows who is there. How the numbers were reached: a solo chef gets an order every 42 seconds, so about 21 arrive in 15 minutes; with the recipes' points plus an average tip that is worth roughly 730 to 820 points if every one is served. Targets sit at 45 to 50 percent of that, a little lower in kitchens where washing up or fires eat time. They are estimates and have not been tuned by play-testing.
+Targets are written for one chef (`target` in `src/shared/level.ts`: 400, 500, 450, 480, 520 and 500 for the six Town Bistro kitchens) and multiplied by `TARGET_SCALE` in `sim.ts` for bigger crews (x2.4, x3.4, x4.2 for 2, 3, 4 chefs). Crews split the jobs, so two chefs do well over twice what one does: a duo once scored 1223 in Kelp Maze against the old target of 650, which is why the targets went up by a quarter and the crew multipliers grew. The target is charged by the second at the rate of the crew in the kitchen at that moment: every second played adds its share for the chefs present, and the time left is counted at the current crew's rate. A full round with one crew size gives exactly the numbers above; if a chef joins or leaves half way, the target lands between the two, and in the lobby it simply follows who is there. How the numbers were reached: a solo chef gets an order every 40 seconds, so about 22 arrive in 15 minutes; with the recipes' points plus an average tip that is worth roughly 730 to 820 points if every one is served. Targets sit at 45 to 50 percent of that, a little lower in kitchens where washing up or fires eat time. They have since been raised after play-testing, as described above.
 
 | Recipe | How | Points | Time limit, solo |
 | --- | --- | --- | --- |
@@ -39,10 +39,10 @@ Targets are written for one chef (`target` in `src/shared/level.ts`: 320, 400, 3
 
 | Chefs | New order every | Orders waiting at most | Time limit |
 | --- | --- | --- | --- |
-| 1 | 42 s | 2 | 100% |
-| 2 | 24 s | 3 | 80% |
-| 3 | 17 s | 4 | 70% |
-| 4 | 13 s | 4 | 62% |
+| 1 | 40 s | 2 | 100% |
+| 2 | 22 s | 3 | 75% |
+| 3 | 16 s | 4 | 65% |
+| 4 | 12 s | 5 | 58% |
 
 These live in `ORDER_TIME_SCALE`, `ORDER_INTERVAL` and `MAX_ORDERS` in `src/shared/sim.ts`, and each recipe's `seconds` in `src/shared/recipes.ts`.
 

@@ -276,7 +276,7 @@ export const LEVELS: Level[] = [
   // A homely kitchen: farmhouse sink, cream fridge and small pot plants on the corner counters.
   parseLevel(
     "Open Kitchen",
-    320,
+    400,
     ["lettuce_salad", "salad", "soup"],
     {
       sink: "sink_farmhouse",
@@ -328,7 +328,7 @@ export const LEVELS: Level[] = [
   // A working line: prep on the left, cooking and serving on the right, joined only by the gap in the divider.
   parseLevel(
     "The Pass",
-    400,
+    500,
     ["lettuce_salad", "salad", "soup", "onion_soup"],
     {
       sink: "sink_industrial",
@@ -387,7 +387,7 @@ export const LEVELS: Level[] = [
   // Three rooms in a zigzag (pantry, stoves, pass) and only four plates, so somebody has to wash up.
   parseLevel(
     "Rush Hour",
-    360,
+    450,
     ["lettuce_salad", "salad", "soup", "onion_soup"],
     {
       sink: "sink_single",
@@ -433,7 +433,7 @@ export const LEVELS: Level[] = [
   // One long island of hobs between the pantry and the pass: soups everywhere, a chicken grill, and a forgotten pot starts a fire.
   parseLevel(
     "Hot Line",
-    380,
+    480,
     ["soup", "onion_soup", "salad", "roast_chicken", "burger"],
     {
       sink: "sink_wood_double",
@@ -485,7 +485,7 @@ export const LEVELS: Level[] = [
   // The finale: four rooms round a cross of counters, five plates to keep washing, and three hobs that can catch fire.
   parseLevel(
     "Full House",
-    420,
+    520,
     ["salad", "soup", "roast_chicken", "chicken_salad", "burger"],
     {
       sink: "sink_industrial",
@@ -537,7 +537,7 @@ export const LEVELS: Level[] = [
   // wash-up on the right; dishes ride the belt across or are walked the long way round by the lane at the back.
   parseLevel(
     "Night Market",
-    400,
+    500,
     ["salad", "soup", "onion_soup", "roast_chicken", "chicken_salad"],
     {
       sink: "sink_wood_double",
@@ -596,7 +596,7 @@ export const LEVELS: Level[] = [
   // Deep Sea Diner opens gently: one open room with two small islands to walk round.
   parseLevel(
     "Coral Cove",
-    320,
+    400,
     ["seaweed_salad", "clam_chowder", "soup"],
     { sink: "sink_single", fridge: "fridge_retro", plants: ["plant_succulent", "plant_lime"] },
     [
@@ -615,7 +615,7 @@ export const LEVELS: Level[] = [
   // Two halves joined by one doorway, short counters to weave between, a grill each side and four plates to wash.
   parseLevel(
     "Kelp Maze",
-    360,
+    450,
     ["seaweed_salad", "clam_chowder", "grilled_fish"],
     { sink: "sink_industrial", fridge: "fridge_pro", plants: ["plant_tropical", "plant_bamboo"] },
     [
@@ -635,7 +635,7 @@ export const LEVELS: Level[] = [
   // right, and one pair of teleport pads in the middle as the only way across. The bulkhead's worktop can hand food over.
   parseLevel(
     "Docking Bay",
-    300,
+    380,
     ["lettuce_salad", "salad", "soup"],
     SPACE_DECOR,
     [
@@ -655,7 +655,7 @@ export const LEVELS: Level[] = [
   // drift, so every turn and stop has to be started early. Four plates go round the wash-up in the right module.
   parseLevel(
     "Zero-G Galley",
-    360,
+    450,
     ["salad", "soup", "onion_soup", "roast_chicken", "chicken_salad"],
     SPACE_DECOR,
     [
@@ -676,7 +676,7 @@ export const LEVELS: Level[] = [
   // straight into a pot); people cannot, so a chef on their own walks round through the pair of magic doors.
   parseLevel(
     "Spellbound Scullery",
-    300,
+    380,
     ["salad", "pumpkin_soup", "lettuce_salad"],
     MAGIC_DECOR,
     [
@@ -696,7 +696,7 @@ export const LEVELS: Level[] = [
   // and plate stack feed the pass and the wash-up on the right. Plates cannot be thrown, so they go through the doors.
   parseLevel(
     "Hall of Cauldrons",
-    340,
+    420,
     ["pumpkin_soup", "mushroom_burger", "salad"],
     MAGIC_DECOR,
     [
