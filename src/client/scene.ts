@@ -792,6 +792,10 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
         const dt = Math.min(clock.getDelta(), 0.1);
         const time = clock.elapsedTime;
         const { state, localId, target, pointed, speaking } = onFrame();
+        // The room lobby covers the whole screen: drawing the kitchen unseen behind it only burns battery and, by
+        // keeping the page busy, delays network messages (which made the lobby's ping read high). The kitchen is
+        // still rebuilt for the chosen level (onFrame does that), so it is ready the moment the lobby closes.
+        if (document.body.classList.contains("in-lobby")) return;
         const shown = state ?? EMPTY_STATE;
         syncRestingItems(shown, time);
         syncDishes(shown);

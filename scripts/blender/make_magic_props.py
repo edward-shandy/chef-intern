@@ -113,7 +113,7 @@ def stone(r):
 # ---------------------------------------------------------------------------------------------------- shared parts
 
 
-def stone_wall(p, width, height, depth, seed, skip=None, course=0.21, chamfer=0.028):
+def stone_wall(p, width, height, depth, seed, skip=None, course=0.21, chamfer=0.028, wide=False):
     """Lays a wall of separate stone blocks in running bond over a dark mortar backing, its face at y = 0.
 
     `skip(x, z)` leaves out blocks whose middle it returns True for (windows, niches, shelves).
@@ -128,7 +128,8 @@ def stone_wall(p, width, height, depth, seed, skip=None, course=0.21, chamfer=0.
             h = height - z
         x = -width / 2 - (r.uniform(0.08, 0.2) if row % 2 else 0.0)
         while x < width / 2 - 1e-3:
-            w = r.uniform(0.26, 0.5)
+            # High up, where the camera sees them small, the blocks are bigger and so fewer.
+            w = r.uniform(0.42, 0.72) if wide else r.uniform(0.26, 0.5)
             left, right = max(x, -width / 2), min(x + w, width / 2)
             if width / 2 - right < 0.08:
                 right = width / 2
@@ -159,7 +160,7 @@ def candle(p, x, y, z, height, radius=0.035, r=None, lit=True):
     for i in range(r.randint(2, 4)):
         a = r.uniform(0, 2 * math.pi)
         length = r.uniform(0.25, 0.6) * height
-        p.sphere(radius * 0.32, (x + math.cos(a) * radius * 0.92, y + math.sin(a) * radius * 0.92, z + height - length / 2), M.wax, scale=(1, 1, length / (radius * 0.6)), segments=8, rings=6)
+        p.sphere(radius * 0.32, (x + math.cos(a) * radius * 0.92, y + math.sin(a) * radius * 0.92, z + height - length / 2), M.wax, scale=(1, 1, length / (radius * 0.6)), segments=6, rings=4)
     p.cylinder(0.004, 0.03, (x, y, z + height + 0.012), M.wick, verts=4)
     if lit:
         flame(p, x, y, z + height + 0.02, 0.06 + radius * 0.6)
@@ -195,13 +196,13 @@ def book(p, x, y, z, w, d, h, r, lean=0.0, lying=False):
     The spine faces -Y. With `lying` it lies flat (w is then its thickness)."""
     cover = M.book_covers[r.randrange(len(M.book_covers))]
     if lying:
-        p.box((h, d, w), (x, y, z + w / 2), cover, bevel=0.006, segments=1)
+        p.box((h, d, w), (x, y, z + w / 2), cover, bevel=0)
         p.box((h - 0.02, d - 0.01, w * 0.7), (x + 0.008, y + 0.004, z + w / 2), M.paper, bevel=0)
         return
     rot = (0, lean, 0)
     cx = x + w / 2 + math.sin(lean) * h / 2
     cz = z + math.cos(lean) * h / 2
-    p.box((w, d, h), (cx, y, cz), cover, rot=rot, bevel=0.006, segments=1)
+    p.box((w, d, h), (cx, y, cz), cover, rot=rot, bevel=0)
     if r.random() < 0.55:
         for band in (0.18, 0.82):
             bz = z + math.cos(lean) * h * band
@@ -262,7 +263,7 @@ def timber_frame(p, width, height, seed):
         p.box((0.14, 0.12, height), (x, -0.04, height / 2), M.oak_dark, bevel=0.018, segments=2)
         # Bolts and an iron strap where the brace meets the post.
         for bz in (height - 0.62, 0.6):
-            p.sphere(0.018, (x, -0.105, bz), M.iron, segments=8, rings=6)
+            p.sphere(0.018, (x, -0.105, bz), M.iron, segments=6, rings=4)
     beam_z = height - 0.2
     p.box((width, 0.14, 0.16), (0, -0.05, beam_z), M.oak_dark, bevel=0.02, segments=2)
     # Braces run from each post up to the beam.
@@ -271,7 +272,7 @@ def timber_frame(p, width, height, seed):
         x = side * (width / 2 - 0.07 - length * 0.35)
         p.box((0.09, 0.08, length), (x, -0.03, beam_z - 0.28), M.oak, rot=(0, side * -math.radians(45), 0), bevel=0.012, segments=1)
     for i in range(5):
-        p.sphere(0.016, (-width / 2 + 0.3 + i * (width - 0.6) / 4, -0.125, beam_z + r.uniform(-0.02, 0.02)), M.iron, segments=8, rings=6)
+        p.sphere(0.016, (-width / 2 + 0.3 + i * (width - 0.6) / 4, -0.125, beam_z + r.uniform(-0.02, 0.02)), M.iron, segments=6, rings=4)
 
 
 # ---------------------------------------------------------------------------------------------------- walls
@@ -330,7 +331,7 @@ def wall_window():
             edge = not inside_pointed_arch(x, z, win_w, spring, margin=-0.11)
             ring = (abs(i) + j) % 5
             glass = M.glass[1] if edge else (M.glass[3] if ring == 0 else M.glass[4] if ring == 3 and r.random() < 0.6 else M.glass[0])
-            p.box((half * 1.36, 0.01, half * 1.36), (x, 0.02, z + bottom), glass, rot=(0, math.pi / 4, 0), bevel=0)
+            p.quad(half * 1.36, half * 1.36, (x, 0.015, z + bottom), glass, rot=(0, math.pi / 4, 0))
     moon_z = bottom + spring + 0.12
     p.prism([(x * 0.13 - 0.02, z * 0.13 + moon_z) for x, z in crescent_points(1, 0.42)], 0.012, (0, 0.006, 0), M.glass[1])
     p.prism([(x + 0.1, z + moon_z + 0.1) for x, z in star_points(0.05, 0.02)], 0.012, (0, 0.006, 0), M.glass[1])
@@ -764,9 +765,9 @@ def chandelier():
         candle(p, x, y, -1.055, 0.15, radius=0.028)
     for i in range(3):
         a = i * 2 * math.pi / 3
-        for k in range(10):
-            t = k / 10
-            p.torus(0.025, 0.006, (math.cos(a) * 0.55 * t, math.sin(a) * 0.55 * t, -0.04 - t * 1.04), M.iron, rot=(math.pi / 2 * (k % 2), 0, a), segments=8, sides=4)
+        length = math.hypot(0.55, 1.04)
+        tilt = math.atan2(0.55, 1.04)
+        p.cylinder(0.008, length, (math.cos(a) * 0.275, math.sin(a) * 0.275, -0.56), M.iron, rot=(0, tilt, a), verts=4)
     p.sphere(0.06, (0, 0, -0.02), M.iron, segments=10, rings=6)
     p.export(os.path.join(OUT, "magic_chandelier.glb"))
 
@@ -848,7 +849,7 @@ def wall_upper():
     def in_window(x, z):
         return inside_pointed_arch(x, z - bottom, win_w, spring, margin=0.14)
 
-    stone_wall(p, WALL_W, UPPER_H, WALL_D, seed=51, skip=in_window, course=0.24)
+    stone_wall(p, WALL_W, UPPER_H, WALL_D, seed=51, skip=in_window, course=0.3, wide=True)
     string_course(p, WALL_W, 0.0, 1)
     outline = [(x, z + bottom) for x, z in pointed_arch(win_w, spring)]
     p.prism(outline, 0.012, (0, 0.03, 0), M.lead)
@@ -868,7 +869,7 @@ def wall_upper():
                 edge = not inside_pointed_arch(x - cx, z, lancet_w, spring - 0.25, margin=-0.09)
                 ring = (abs(i) + j) % 4
                 glass = M.glass[1] if edge else (M.glass[2] if ring == 0 and r.random() < 0.5 else M.glass[3] if ring == 2 else M.glass[0])
-                p.box((half * 1.36, 0.01, half * 1.36), (x, 0.02, z + bottom), glass, rot=(0, math.pi / 4, 0), bevel=0)
+                p.quad(half * 1.36, half * 1.36, (x, 0.015, z + bottom), glass, rot=(0, math.pi / 4, 0))
     p.box((0.07, 0.16, spring + 0.15), (0, -0.02, bottom + (spring + 0.15) / 2), M.stone_light, bevel=0.015, segments=1)
     oculus_z = bottom + spring + 0.48
     p.torus(0.2, 0.045, (0, -0.02, oculus_z), M.stone_light, rot=(math.pi / 2, 0, 0), segments=24, sides=8)
@@ -885,15 +886,15 @@ def wall_upper():
 def wall_tapestry():
     """The middle tier, second kind: a great hanging tapestry with the keep's crest between two torches' sconces."""
     p = Prop("magic_wall_tapestry")
-    stone_wall(p, WALL_W, UPPER_H, WALL_D, seed=63, course=0.24)
+    stone_wall(p, WALL_W, UPPER_H, WALL_D, seed=63, course=0.3, wide=True)
     string_course(p, WALL_W, 0.0, 2)
     top = UPPER_H - 0.45
     p.cylinder(0.025, 1.45, (0, -0.1, top), M.brass, rot=(0, math.pi / 2, 0), verts=10)
     for side in (-1, 1):
         p.sphere(0.045, (side * 0.74, -0.1, top), M.gold, segments=10, rings=6)
         p.box((0.04, 0.12, 0.04), (side * 0.6, -0.04, top), M.iron, bevel=0.008, segments=1)
-    p.cloth(1.3, 2.9, (0, -0.12, top - 0.03), M.cloth["navy"], waves=1.0, depth=0.03, rows=20)
-    p.cloth(1.16, 2.76, (0, -0.15, top - 0.1), M.cloth["violet"], waves=1.0, depth=0.03, rows=20)
+    p.cloth(1.3, 2.9, (0, -0.12, top - 0.03), M.cloth["navy"], waves=1.0, depth=0.03, cols=8, rows=8)
+    p.cloth(1.16, 2.76, (0, -0.15, top - 0.1), M.cloth["violet"], waves=1.0, depth=0.03, cols=8, rows=8)
     # Crest: a gold shield outline with a crescent moon, a star and a cauldron below.
     cz = top - 1.2
     p.prism([(-0.32, 0.3), (0.32, 0.3), (0.32, -0.05), (0.0, -0.42), (-0.32, -0.05)], 0.02, (0, -0.18, cz), M.gold)
@@ -913,7 +914,7 @@ def wall_tapestry():
 def wall_top():
     """The top tier, up into the rafters: rough stone, an arrow slit, and a great oak roof truss pinned to the wall."""
     p = Prop("magic_wall_top")
-    stone_wall(p, WALL_W, TOP_H, WALL_D, seed=77, course=0.27, skip=lambda x, z: abs(x) < 0.08 and 1.4 < z < 2.4)
+    stone_wall(p, WALL_W, TOP_H, WALL_D, seed=77, course=0.34, wide=True, skip=lambda x, z: abs(x) < 0.08 and 1.4 < z < 2.4)
     string_course(p, WALL_W, 0.0, 3)
     p.box((0.12, 0.05, 1.0), (0, 0.04, 1.9), M.recess, bevel=0)
     # The truss: a tie beam, two rafters meeting at the top, a king post and two struts, bolted with iron.
@@ -929,7 +930,7 @@ def wall_top():
     p.box((0.18, 0.16, rise), (0, -0.1, tie_z + rise / 2), M.oak, bevel=0.02, segments=2)
     for x, z in ((0, tie_z), (0, tie_z + rise * 0.98), (-0.85, tie_z + 0.1), (0.85, tie_z + 0.1)):
         p.box((0.16, 0.03, 0.16), (x, -0.22, z), M.iron, bevel=0.01, segments=1)
-        p.sphere(0.022, (x, -0.24, z), M.iron, segments=8, rings=6)
+        p.sphere(0.022, (x, -0.24, z), M.iron, segments=6, rings=4)
     p.export(os.path.join(OUT, "magic_wall_top.glb"))
 
 
@@ -986,10 +987,10 @@ def riverbed():
     r = rng(47)
     p.box((1.0, 1.0, 0.04), (0, 0, -0.02), material("riverbed_silt", "#3a4a44", 0.95), bevel=0)
     pebble_cols = [material("pebble_a", "#7d8590", 0.6), material("pebble_b", "#9a8f80", 0.6), material("pebble_c", "#5f6670", 0.6), material("pebble_d", "#b5ae9e", 0.6)]
-    for i in range(46):
-        size = r.uniform(0.025, 0.06) if i > 8 else r.uniform(0.08, 0.13)
+    for i in range(32):
+        size = r.uniform(0.03, 0.065) if i > 8 else r.uniform(0.08, 0.13)
         x, y = r.uniform(-0.45, 0.45), r.uniform(-0.48, 0.48)
-        p.sphere(size, (x, y, size * 0.25), pebble_cols[r.randrange(4)], scale=(1.0, r.uniform(0.7, 1.3), r.uniform(0.35, 0.55)), rot=(0, 0, r.uniform(0, 3)), segments=10, rings=6)
+        p.sphere(size, (x, y, size * 0.25), pebble_cols[r.randrange(4)], scale=(1.0, r.uniform(0.7, 1.3), r.uniform(0.35, 0.55)), rot=(0, 0, r.uniform(0, 3)), segments=7, rings=4)
         if i < 4:
             p.sphere(size * 0.8, (x, y, size * 0.42), M.leaf, scale=(1.0, 1.0, 0.25), segments=8, rings=5)
     for i in range(4):

@@ -87,6 +87,18 @@ class Prop:
             bmesh.ops.bevel(bm, geom=list(bm.edges), offset=min(bevel, limit), segments=segments, profile=0.5, affect="EDGES")
         return self._add(bm, mat, loc, rot, smooth=bevel > 0 and segments > 1, sharp=50)
 
+    def quad(self, width, height, loc, mat, rot=(0, 0, 0)):
+        """A flat rectangle in the XZ plane facing -Y: two triangles, for glass panes and other thin flat things."""
+        bm = bmesh.new()
+        w, h = width / 2, height / 2
+        verts = [bm.verts.new(v) for v in ((-w, 0, -h), (w, 0, -h), (w, 0, h), (-w, 0, h))]
+        bm.faces.new(verts)
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+        for face in bm.faces:
+            if face.normal.y > 0:
+                face.normal_flip()
+        return self._add(bm, mat, loc, rot)
+
     def cylinder(self, radius, depth, loc, mat, rot=(0, 0, 0), verts=16, radius_top=None, bevel=0.0, cap=True):
         """A cylinder (or a cone frustum when `radius_top` is given) standing on Z, centred on `loc`."""
         bm = bmesh.new()
@@ -104,7 +116,7 @@ class Prop:
             bmesh.ops.bevel(bm, geom=rims, offset=bevel, segments=2, profile=0.5, affect="EDGES")
         return self._add(bm, mat, loc, rot, smooth=True, sharp=50)
 
-    def sphere(self, radius, loc, mat, scale=(1, 1, 1), rot=(0, 0, 0), segments=16, rings=10):
+    def sphere(self, radius, loc, mat, scale=(1, 1, 1), rot=(0, 0, 0), segments=12, rings=8):
         bm = bmesh.new()
         bmesh.ops.create_uvsphere(bm, u_segments=segments, v_segments=rings, radius=radius)
         return self._add(bm, mat, loc, rot, scale, smooth=True, sharp=180)
