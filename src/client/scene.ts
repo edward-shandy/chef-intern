@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { isFixture, walkable, type Level } from "../shared/level";
+import { outOfHand, walkable, type Level } from "../shared/level";
 import type { GameState, Item } from "../shared/sim";
 import {
   animatePads,
@@ -30,6 +30,7 @@ import {
 } from "./models";
 import { animateSea, SEA_WATER } from "./sea";
 import { animateSpace } from "./space";
+import { animateMagic } from "./magic";
 import { createPolish } from "./polish";
 import { animateChef, createChef, type ChefRig } from "./chef";
 import { animateFire, animateSpray, createFire, createSpray, type FireView } from "./fire";
@@ -250,7 +251,7 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
   // Themes that opt into the polished look get post-processing (bloom, ambient occlusion, outlines, grading)
   // and extra "juice": camera shake and bursts of particles at the moments that matter.
   const polish = createPolish(renderer, scene, camera, lowPower);
-  const polished = () => level.theme === "space";
+  const polished = () => level.theme === "space" || level.theme === "magic";
   let shake = 0;
   const kick = (amount: number) => {
     if (polished()) shake = Math.max(shake, amount);
@@ -340,6 +341,23 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
       scene.environmentIntensity = 0.16;
       renderer.toneMappingExposure = 0.94;
     }
+    // The castle at night: cool moonlight through the windows as the key, a violet fill, and the candles, fires and
+    // the stream adding warm and green pools of their own. The kitchen stays bright enough to read every station.
+    // Bloom is kept low and only for real light sources (flames, glass), so nothing glares.
+    polish.setBloom(level.theme === "magic" ? 0.16 : 0.36, level.theme === "magic" ? 1.3 : 1.05);
+    if (level.theme === "magic") {
+      hemi.intensity = 0.36;
+      hemi.color.setHex(0xd2c8ff);
+      hemi.groundColor.setHex(0x2c2440);
+      key.intensity = 1.25;
+      key.color.setHex(0xe6e4ff);
+      fill.intensity = 0.42;
+      fill.color.setHex(0x9a7bff);
+      scene.environmentIntensity = 0.14;
+      renderer.toneMappingExposure = 0.9;
+      (scene.background as THREE.Color).setHex(0x110d20);
+      fog.color.setHex(0x110d20);
+    }
   };
 
   const tileCentre = (index: number) => ({ x: (index % level.width) + 0.5, z: Math.floor(index / level.width) + 0.5 });
@@ -407,6 +425,43 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
     }
     beltSteps = steps;
     beltItems = { ...state.tileItems };
+  };
+
+  // Thrown food: each piece glides on at its own speed between snapshots, is eased onto where the server says it is,
+  // spins as it flies and trails sparkles. When it lands, is caught or drops, it vanishes in a little puff.
+  const flying = new Map<number, { mesh: THREE.Object3D; vx: number; vz: number; x: number; z: number; trail: number }>();
+  const syncFlying = (state: GameState, dt: number, time: number) => {
+    const live = new Set<number>();
+    for (const piece of state.flying ?? []) {
+      live.add(piece.id);
+      let view = flying.get(piece.id);
+      if (!view) {
+        const thing = createItem(piece.item);
+        world.add(thing);
+        view = { mesh: thing, vx: piece.vx, vz: piece.vz, x: piece.x, z: piece.z, trail: 0 };
+        flying.set(piece.id, view);
+      }
+      view.vx = piece.vx;
+      view.vz = piece.vz;
+      view.x += view.vx * dt;
+      view.z += view.vz * dt;
+      // Snapshots are 50 ms apart; pull gently towards each one so the glide never jumps.
+      view.x += (piece.x - view.x) * (1 - Math.exp(-10 * dt));
+      view.z += (piece.z - view.z) * (1 - Math.exp(-10 * dt));
+      view.mesh.position.set(view.x, 0.82 + Math.sin(time * 9 + piece.id) * 0.04, view.z);
+      view.mesh.rotation.y += dt * 9;
+      view.trail -= dt;
+      if (view.trail <= 0) {
+        view.trail = 0.05;
+        dashFx.burst(view.x, 0.85, view.z, [0xfff1a8, 0x8fffe0, 0xc9a8ff], 2, 0.4, 0.07);
+      }
+    }
+    for (const [id, view] of flying) {
+      if (live.has(id)) continue;
+      dashFx.burst(view.x, 0.8, view.z, [0xfff1a8, 0x8fffe0, 0xc9a8ff], 8, 1.2, 0.1);
+      view.mesh.removeFromParent();
+      flying.delete(id);
+    }
   };
 
   const syncRestingItems = (state: GameState, time: number) => {
@@ -728,7 +783,7 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
       raycaster.setFromCamera(pointer, camera);
       // Stations are found at worktop height, which is where they appear under the cursor.
       const tile = tileOnPlane(WORKTOP_Y);
-      return tile !== null && !walkable(level.tiles[tile]) && !isFixture(level.tiles[tile]) ? tile : null;
+      return tile !== null && !walkable(level.tiles[tile]) && !outOfHand(level.tiles[tile]) ? tile : null;
     },
 
     start(onFrame) {
@@ -745,6 +800,7 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
         animatePads(stations, time);
         syncFires(shown, time);
         syncChefs(shown, localId, dt, time, speaking);
+        syncFlying(shown, dt, time);
         followChef(shown, localId, dt);
         dashFx.update(shown.players, dt);
         syncMarkers(target, pointed, time);
@@ -754,6 +810,7 @@ export function createKitchenView(canvas: HTMLCanvasElement, initialLevel: Level
         animateStreet(room, time);
         animateSea(room, time);
         animateSpace(room, time);
+        animateMagic(room, time);
         for (const object of popping) {
           const scale = object.scale.x + (1 - object.scale.x) * (1 - Math.exp(-20 * dt));
           object.scale.setScalar(scale);

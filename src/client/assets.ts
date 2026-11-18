@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
 // KayKit Restaurant Bits models (CC0) served from public/models.
@@ -66,6 +67,10 @@ const props = new Map<string, THREE.Object3D>();
 // Loads the named decoration props; one that fails is simply left out, since nothing depends on it.
 export async function loadProps(names: string[]): Promise<void> {
   const loader = new GLTFLoader();
+  // The Blender-built props (scripts/blender) are Draco-compressed; the decoder lives in public/draco.
+  const draco = new DRACOLoader();
+  draco.setDecoderPath("/draco/");
+  loader.setDRACOLoader(draco);
   await Promise.all(
     names.map(async (name) => {
       try {

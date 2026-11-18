@@ -3233,3 +3233,32 @@ html {
     animation: none;
   }
 }
+
+/* Throwing and magic doors in the briefing: the pumpkin flies in an arc, the portals swirl. */
+.ill-throw-x {
+  animation: ill-throw-x 1.8s linear infinite;
+}
+
+.ill-throw-y {
+  animation: ill-throw-y 1.8s ease-in-out infinite;
+}
+
+.ill-spin {
+  animation: ill-spin-glow 1.6s ease-in-out infinite alternate;
+}
+
+@keyframes ill-throw-x {
+  0%, 15% { transform: translateX(0); }
+  70%, 100% { transform: translateX(66px); }
+}
+
+@keyframes ill-throw-y {
+  0%, 15% { transform: translateY(0); }
+  42% { transform: translateY(-34px); }
+  70%, 100% { transform: translateY(10px); }
+}
+
+@keyframes ill-spin-glow {
+  from { opacity: 0.65; }
+  to { opacity: 1; }
+}

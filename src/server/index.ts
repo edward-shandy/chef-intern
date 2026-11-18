@@ -56,7 +56,7 @@ const TICK_MS = 50;
 // which saves up to a whole tick of delay; this caps how often a spamming client can force one.
 const EARLY_TICK_MS = 30;
 // Game-state fields only the server's simulation needs; clients never read them, so they are left out of snapshots.
-const SERVER_ONLY = new Set(["seed", "nextOrderId", "targetSoFar", "spreadIn", "beltIn", "nextOrderIn", "overFor", "returning"]);
+const SERVER_ONLY = new Set(["seed", "nextOrderId", "nextFlyingId", "useHeld", "targetSoFar", "spreadIn", "beltIn", "nextOrderIn", "overFor", "returning"]);
 // Snapshots round every fraction to three decimals (timers, cook progress, positions), which is plenty for drawing
 // and keeps 17-digit floats like 0.09999999999999848 off the wire.
 const compact = (key: string, value: unknown): unknown =>

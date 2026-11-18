@@ -13,6 +13,7 @@ const TITLES: Array<{ stat: keyof ChefStats; title: string; icon: string; noun: 
   { stat: "chopped", title: "Knife Master", icon: "🔪", noun: ["chopped", "chopped"] },
   { stat: "washed", title: "Dish Hero", icon: "🧽", noun: ["plate washed", "plates washed"] },
   { stat: "doused", title: "Firefighter", icon: "🧯", noun: ["fire out", "fires out"] },
+  { stat: "thrown", title: "Spell Slinger", icon: "🪄", noun: ["good throw", "good throws"] },
 ];
 
 const CONFETTI_COLOURS = ["#ffd166", "#3fd6e8", "#f27aa0", "#9b7bff", "#7ccf4f", "#ff8a3d"];

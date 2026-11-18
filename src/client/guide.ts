@@ -19,6 +19,8 @@ const CAPTIONS: Record<Scene, { text: string; short: string; key?: string }> = {
   belt: { text: "Let the belt carry it", short: "Belt" },
   warp: { text: "Step on a pad to beam across", short: "Teleport" },
   float: { text: "Zero gravity: start turns early!", short: "Floaty" },
+  throw: { text: "Throw food over the stream", short: "Throw", key: "<kbd>F</kbd> with food" },
+  door: { text: "Walk through a magic door", short: "Doors" },
 };
 
 // The big pictures for each kitchen, by name: how to cook in the first one, then whatever that kitchen adds.
@@ -32,6 +34,8 @@ const NEW_HERE: Record<string, Scene[]> = {
   "Night Market": ["belt"],
   "Docking Bay": ["warp"],
   "Zero-G Galley": ["float", "warp"],
+  "Spellbound Scullery": ["throw", "door"],
+  "Hall of Cauldrons": ["grill", "wash"],
 };
 
 // Every job a kitchen asks for, as the scenes that show it.
@@ -42,7 +46,8 @@ function scenesOf(level: Level): Scene[] {
   if (level.plates) scenes.push("wash");
   if (level.fire) scenes.push("fire");
   if (level.tiles.some((tile) => tile.kind === "belt")) scenes.push("belt");
-  if (level.tiles.some((tile) => tile.kind === "warp")) scenes.push("warp");
+  if (level.tiles.some((tile) => tile.kind === "chasm")) scenes.push("throw");
+  if (level.tiles.some((tile) => tile.kind === "warp")) scenes.push(level.theme === "magic" ? "door" : "warp");
   if (level.lowGravity) scenes.push("float");
   return scenes;
 }

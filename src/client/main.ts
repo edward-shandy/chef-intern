@@ -18,6 +18,7 @@ import { createSound } from "./sound";
 import { createTouchControls, wantsTouchControls } from "./touch";
 import { createClientWorld } from "./world";
 import { createVoiceChat, type VoiceChat } from "./voice";
+import { MAGIC_PROPS } from "./magic";
 import "./style.css";
 
 const PING_EVERY_MS = 4000;
@@ -371,8 +372,16 @@ function playRoom(roomCode: string): void {
       const me = localPlayer();
       const target = me && shown?.phase !== "over" ? targetTile(currentLevel(), me, aim) : null;
       // The touch hold button says what holding it will do: spray with the extinguisher in hand, scrub at the sink, else chop.
+      // With food in hand the same button throws it, in the kitchens split by a stream.
+      const throwing = me?.held?.type === "ingredient" && currentLevel().tiles.some((tile) => tile.kind === "chasm");
       touch?.setHoldAction(
-        me?.held?.type === "extinguisher" ? "spray" : target !== null && currentLevel().tiles[target].kind === "wash" ? "wash" : "chop",
+        me?.held?.type === "extinguisher"
+          ? "spray"
+          : throwing
+            ? "throw"
+            : target !== null && currentLevel().tiles[target].kind === "wash"
+              ? "wash"
+              : "chop",
       );
       canvas.style.cursor = aim === null ? "default" : "pointer";
       // A pointed-at station that is not the active target is out of reach, and gets its own outline.
@@ -404,7 +413,7 @@ function playRoom(roomCode: string): void {
         ]
       : []),
   ]).filter(Boolean);
-  Promise.all([loadModels(), loadChefs(), loadProps([...new Set([...decorNames, ...CHEF_PROPS])])]).then(() => {
+  Promise.all([loadModels(), loadChefs(), loadProps([...new Set([...decorNames, ...CHEF_PROPS, ...MAGIC_PROPS])])]).then(() => {
     startGame();
     renderPortraits();
   }, (error) => {
