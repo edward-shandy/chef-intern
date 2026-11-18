@@ -1,4 +1,4 @@
-import { beltNext, burns, holdsItems, isFixture, LEVELS, nextLevel, tileAt, walkable, warpDestination, type Level } from "./level";
+import { beltNext, burns, holdsItems, LEVELS, nextLevel, outOfHand, tileAt, walkable, warpDestination, type Level } from "./level";
 import { isCharacter, seatCharacter, type CharacterId } from "./characters";
 import { isSoup, PREP, RECIPES, ROAST_OF, SOUP_OF, type DishPart, type Ingredient, type RecipeId } from "./recipes";
 
@@ -46,6 +46,12 @@ const EXTINGUISH_SECONDS = 1.5;
 const SPREAD_SECONDS = [12, 10, 8, 7];
 // Cosine of half the spray cone's angle.
 const SPRAY_ARC = 0.6;
+// Thrown food: how fast it flies (tiles a second), how far before it drops, how close a chef with empty hands must be
+// to catch it, and how long before the thrower could catch their own throw.
+export const THROW_SPEED = 9;
+const THROW_RANGE = 6.5;
+const CATCH_RADIUS = 0.55;
+const OWN_CATCH_DELAY = 0.3;
 
 // Pacing by number of chefs, tuned so one person alone can keep up: each recipe's
 // time limit is scaled by ORDER_TIME_SCALE, a new order arrives every ORDER_INTERVAL
@@ -67,6 +73,20 @@ export type Item =
   | { type: "extinguisher" };
 
 type Plate = Extract<Item, { type: "plate" }>;
+
+// A piece of food in the air, thrown by a chef. It flies straight at hand height until a chef with empty hands
+// catches it, it hits a worktop (landing on it, or in the pot or on the plate there), or it runs out of range and drops.
+export interface Flying {
+  id: number;
+  item: Item;
+  x: number;
+  z: number;
+  vx: number;
+  vz: number;
+  // Who threw it, and how far it has gone.
+  by: number;
+  travelled: number;
+}
 type Pot = Extract<Item, { type: "pot" }>;
 
 export interface Order {
@@ -104,6 +124,8 @@ export interface PlayerState {
   stats: ChefStats;
   // True while this chef is in the crew's voice chat.
   voice: boolean;
+  // Whether the use button was already down last step, so holding it throws only once. Server only.
+  useHeld?: boolean;
 }
 
 export interface GameState {
@@ -112,6 +134,9 @@ export interface GameState {
   players: PlayerState[];
   // Items resting on solid tiles, keyed by tile index.
   tileItems: Record<number, Item>;
+  // Food in the air, and the id the next throw gets.
+  flying: Flying[];
+  nextFlyingId: number;
   // Clean plates left on the stack, or null in kitchens where plates never run out.
   plates: number | null;
   // Dirty plates waiting at the return hatch, and the timers of plates still out with customers.
@@ -154,6 +179,8 @@ export interface ChefStats {
   chopped: number;
   washed: number;
   doused: number;
+  // Food thrown that was caught or landed somewhere useful.
+  thrown?: number;
 }
 
 export interface PlayerInput {
@@ -200,6 +227,8 @@ export function createGame(level: number, seed: number, waiting = false, phase: 
     level,
     players: [],
     tileItems: startingItems(LEVELS[level]),
+    flying: [],
+    nextFlyingId: 1,
     plates: LEVELS[level].plates ?? null,
     dirty: 0,
     returning: [],
@@ -267,7 +296,7 @@ export function removePlayer(state: GameState, id: number): void {
 // True when the tile is a station close enough for this chef to use by pointing at it.
 export function inReach(level: Level, player: PlayerState, tile: number): boolean {
   const target = level.tiles[tile];
-  if (!target || walkable(target) || isFixture(target)) return false;
+  if (!target || walkable(target) || outOfHand(target)) return false;
   const tx = tile % level.width;
   const tz = Math.floor(tile / level.width);
   const dx = player.x - Math.max(tx, Math.min(player.x, tx + 1));
@@ -281,7 +310,7 @@ export function targetTile(level: Level, player: PlayerState, aim: number | null
   const tx = Math.floor(player.x + Math.sin(player.facing) * REACH);
   const tz = Math.floor(player.z + Math.cos(player.facing) * REACH);
   const tile = tileAt(level, tx, tz);
-  return tile && !walkable(tile) && !isFixture(tile) ? tz * level.width + tx : null;
+  return tile && !walkable(tile) && !outOfHand(tile) ? tz * level.width + tx : null;
 }
 
 // Seeded generator so the simulation stays reproducible from its state alone.
@@ -446,6 +475,69 @@ function spray(level: Level, state: GameState, player: PlayerState, aim: number 
       player.stats.doused += 1;
     }
   }
+}
+
+// Food leaves the chef's hands at hand height, flying the way they face (or towards the tile they point at).
+function throwFood(level: Level, state: GameState, player: PlayerState, aim: number | null): void {
+  const item = player.held;
+  if (item?.type !== "ingredient") return;
+  if (aim !== null) faceTile(level, player, aim);
+  const dx = Math.sin(player.facing);
+  const dz = Math.cos(player.facing);
+  state.flying.push({
+    id: state.nextFlyingId++,
+    item,
+    x: player.x + dx * 0.3,
+    z: player.z + dz * 0.3,
+    vx: dx * THROW_SPEED,
+    vz: dz * THROW_SPEED,
+    by: player.id,
+    travelled: 0,
+  });
+  player.held = null;
+}
+
+// Puts thrown food down on the worktop it hit: onto a free worktop, or into the pot or onto the plate resting there.
+// Anything else (a crate, the window, a burning worktop) knocks it to the floor, where it is lost.
+function land(level: Level, state: GameState, flying: Flying, index: number): boolean {
+  const tile = level.tiles[index];
+  if (state.fires[index] !== undefined) return false;
+  const resting = state.tileItems[index];
+  if (resting) return combine(flying.item, resting) === "held";
+  if (!holdsItems(tile)) return false;
+  state.tileItems[index] = flying.item;
+  return true;
+}
+
+function moveFlying(level: Level, state: GameState, dt: number): void {
+  state.flying = state.flying.filter((flying) => {
+    const step = THROW_SPEED * dt;
+    flying.x += flying.vx * dt;
+    flying.z += flying.vz * dt;
+    flying.travelled += step;
+    const thrower = state.players.find((player) => player.id === flying.by);
+    // Any chef with empty hands it passes close to catches it.
+    for (const player of state.players) {
+      if (player.held || Math.hypot(player.x - flying.x, player.z - flying.z) > CATCH_RADIUS) continue;
+      if (player.id === flying.by && flying.travelled < THROW_SPEED * OWN_CATCH_DELAY) continue;
+      player.held = flying.item;
+      if (thrower && player.id !== flying.by) thrower.stats.thrown = (thrower.stats.thrown ?? 0) + 1;
+      return false;
+    }
+    const tx = Math.floor(flying.x);
+    const tz = Math.floor(flying.z);
+    const tile = tileAt(level, tx, tz);
+    if (!tile) return false;
+    if (!walkable(tile) && tile.kind !== "chasm") {
+      // It flew into something solid: a worktop catches it, anything else drops it.
+      if (tile.kind !== "sink" && tile.kind !== "fridge" && tile.kind !== "plant" && land(level, state, flying, tz * level.width + tx) && thrower) {
+        thrower.stats.thrown = (thrower.stats.thrown ?? 0) + 1;
+      }
+      return false;
+    }
+    // Out of range it drops: onto the floor, or into the stream, and either way it is gone.
+    return flying.travelled < THROW_RANGE;
+  });
 }
 
 // Sets a worktop alight, ruining whatever food was on it.
@@ -798,9 +890,14 @@ export function stepGame(state: GameState, inputs: Record<number, PlayerInput>, 
     const input = inputs[player.id] ?? IDLE_INPUT;
     player.chopping = player.washing = player.spraying = false;
     if (input.interact) interact(level, state, player, input.aim);
+    // Pressing use with food in hand throws it; holding the button down throws only once.
+    const pressed = input.use && !player.useHeld;
+    player.useHeld = input.use;
     if (input.use && player.held?.type === "extinguisher") spray(level, state, player, input.aim, dt);
+    else if (pressed && player.held?.type === "ingredient") throwFood(level, state, player, input.aim);
     else if (input.use) chop(level, state, player, input.aim, dt);
   }
+  moveFlying(level, state, dt);
 
   cookPots(level, state, dt);
   runBelts(level, state, dt);

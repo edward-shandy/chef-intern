@@ -1,11 +1,27 @@
-export type Ingredient = "tomato" | "lettuce" | "onion" | "chicken" | "seaweed" | "clam" | "fish" | "bun" | "meat";
-export type Soup = "tomato_soup" | "onion_soup" | "clam_soup";
+export type Ingredient =
+  | "tomato"
+  | "lettuce"
+  | "onion"
+  | "chicken"
+  | "seaweed"
+  | "clam"
+  | "fish"
+  | "bun"
+  | "meat"
+  | "pumpkin"
+  | "mushroom";
+export type Soup = "tomato_soup" | "onion_soup" | "clam_soup" | "pumpkin_soup";
 // What a whole chicken becomes after its time on the grill.
 export type Roast = "roast_chicken";
 export type DishPart = Exclude<Ingredient, "chicken"> | Soup | Roast;
 
 // Ingredients that can be boiled into a soup, three of the same kind per pot.
-export const SOUP_OF: Partial<Record<Ingredient, Soup>> = { tomato: "tomato_soup", onion: "onion_soup", clam: "clam_soup" };
+export const SOUP_OF: Partial<Record<Ingredient, Soup>> = {
+  tomato: "tomato_soup",
+  onion: "onion_soup",
+  clam: "clam_soup",
+  pumpkin: "pumpkin_soup",
+};
 // Ingredients that go on the grill whole instead of being chopped.
 export const ROAST_OF: Partial<Record<Ingredient, Roast>> = { chicken: "roast_chicken" };
 
@@ -20,6 +36,8 @@ export const PREP: Record<Ingredient, { chop: boolean; grill: boolean }> = {
   fish: { chop: true, grill: true },
   meat: { chop: true, grill: true },
   bun: { chop: false, grill: false },
+  pumpkin: { chop: true, grill: false },
+  mushroom: { chop: true, grill: true },
 };
 
 export const isSoup = (part: DishPart): part is Soup => part.endsWith("_soup");
@@ -36,6 +54,8 @@ export const RECIPES = {
   clam_chowder: { label: "Clam chowder", parts: ["clam_soup"], points: 45, seconds: 120 },
   grilled_fish: { label: "Grilled fish", parts: ["fish"], points: 40, seconds: 110 },
   burger: { label: "Burger", parts: ["bun", "meat", "lettuce", "tomato"], points: 60, seconds: 150 },
+  pumpkin_soup: { label: "Pumpkin soup", parts: ["pumpkin_soup"], points: 45, seconds: 120 },
+  mushroom_burger: { label: "Mushroom burger", parts: ["bun", "mushroom", "lettuce"], points: 60, seconds: 150 },
 } satisfies Record<string, { label: string; parts: DishPart[]; points: number; seconds: number }>;
 
 export type RecipeId = keyof typeof RECIPES;

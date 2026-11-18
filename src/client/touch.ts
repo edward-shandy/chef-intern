@@ -10,7 +10,7 @@ export interface TouchSample {
 }
 
 // What the hold button does right now, which is what it says on it.
-export type HoldAction = "chop" | "wash" | "spray";
+export type HoldAction = "chop" | "wash" | "spray" | "throw";
 
 export interface TouchControls {
   sample(): TouchSample;
@@ -107,7 +107,7 @@ export function createTouchControls(): TouchControls {
   }
 
   const holdButton = root.querySelector<HTMLElement>(".touch-chop")!;
-  const HOLD_LABELS: Record<HoldAction, string> = { chop: "Chop", wash: "Wash", spray: "Spray" };
+  const HOLD_LABELS: Record<HoldAction, string> = { chop: "Chop", wash: "Wash", spray: "Spray", throw: "Throw" };
   let holdAction: HoldAction = "chop";
 
   return {

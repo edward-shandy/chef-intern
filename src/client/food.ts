@@ -3,7 +3,7 @@ import type { DishPart, Ingredient } from "../shared/recipes";
 import { ball, box, cylinder, mat, mesh, noise, rounded, shadowed } from "./models";
 
 // Ingredients drawn in code rather than taken from the KayKit pack; all have their origin at the base.
-export const CODE_FOOD: Ingredient[] = ["seaweed", "clam", "fish", "bun", "meat"];
+export const CODE_FOOD: Ingredient[] = ["seaweed", "clam", "fish", "bun", "meat", "pumpkin", "mushroom"];
 
 export type Stage = "whole" | "chopped" | "cooked" | "burnt";
 
@@ -109,6 +109,67 @@ function meat(stage: Stage): THREE.Group {
   return group;
 }
 
+function pumpkin(stage: Stage): THREE.Group {
+  const group = new THREE.Group();
+  const skin = mat(0xef8424, 0.55);
+  if (stage === "whole") {
+    // Ribbed: a ring of squashed lobes round a core, with a curly green stem.
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2;
+      const lobe = mesh(ball(0.075, 12), i % 2 ? skin : mat(0xe0741a, 0.55), Math.cos(angle) * 0.065, 0.085, Math.sin(angle) * 0.065);
+      lobe.scale.set(0.8, 1, 0.8);
+      group.add(lobe);
+    }
+    const core = mesh(ball(0.1, 14), skin, 0, 0.085, 0);
+    core.scale.y = 0.85;
+    group.add(core, turn(mesh(cylinder(0.018, 0.025, 0.07, 6), mat(0x5c8a2e, 0.7), 0.01, 0.18, 0), 0, 0, -0.3));
+    group.add(turn(mesh(new THREE.TorusGeometry(0.03, 0.007, 5, 10, Math.PI * 1.3), mat(0x6fa83a, 0.7), 0.04, 0.2, 0), 0, 0.4, 0));
+  } else {
+    // Diced: orange-skinned cubes with pale flesh, a few seeds.
+    for (let i = 0; i < 9; i++) {
+      const cube = new THREE.Group();
+      cube.add(mesh(rounded(0.07, 0.06, 0.07, 0.012), mat(0xffb15a, 0.6), 0, 0.03, 0), mesh(box(0.072, 0.015, 0.072), skin, 0, 0.0075, 0));
+      cube.position.set((noise(i) - 0.5) * 0.2, (i % 3) * 0.02, (noise(i + 5) - 0.5) * 0.2);
+      cube.rotation.y = noise(i + 11) * Math.PI;
+      group.add(cube);
+    }
+    for (let i = 0; i < 4; i++) {
+      const seed = mesh(ball(0.012, 6), mat(0xf6eccf, 0.5), (noise(i + 20) - 0.5) * 0.18, 0.07, (noise(i + 30) - 0.5) * 0.18);
+      seed.scale.set(1.6, 0.5, 1);
+      group.add(seed);
+    }
+  }
+  return group;
+}
+
+function mushroom(stage: Stage): THREE.Group {
+  const group = new THREE.Group();
+  const cap = mat(stage === "burnt" ? BURNT : stage === "cooked" ? 0x7a4a6e : 0x9b5cd6, 0.55);
+  const stem = mat(stage === "burnt" ? BURNT : stage === "cooked" ? 0xd9a86e : 0xf3e6cf, 0.6);
+  if (stage === "whole") {
+    // A plump violet toadstool with pale spots.
+    group.add(mesh(cylinder(0.045, 0.055, 0.1, 10), stem, 0, 0.05, 0));
+    const top = mesh(dome(0.12), cap, 0, 0.09, 0);
+    top.scale.y = 0.7;
+    group.add(top);
+    for (let i = 0; i < 5; i++) {
+      const angle = i * 1.3;
+      group.add(mesh(ball(0.018, 6), mat(0xf6eaff, 0.5), Math.cos(angle) * 0.07, 0.15 - (i % 2) * 0.02, Math.sin(angle) * 0.07));
+    }
+  } else {
+    // Slices showing the cap's edge, browned with grill marks once cooked.
+    for (let i = 0; i < 5; i++) {
+      const slice = new THREE.Group();
+      slice.add(mesh(rounded(0.1, 0.022, 0.07, 0.01), stem, 0, 0.011, 0), mesh(box(0.1, 0.024, 0.02), cap, 0, 0.012, -0.035));
+      slice.position.set(-0.08 + i * 0.04, i * 0.006, (i % 2) * 0.03 - 0.015);
+      slice.rotation.y = 0.3 - i * 0.15;
+      group.add(slice);
+    }
+    if (stage === "cooked") grillMarks(group, 0.18, 0.04);
+  }
+  return group;
+}
+
 function bun(): THREE.Group {
   const group = new THREE.Group();
   const crust = mat(0xd9913a, 0.55);
@@ -127,7 +188,19 @@ function bun(): THREE.Group {
 // One ingredient as it looks at a given stage.
 export function createFood(kind: Ingredient, stage: Stage): THREE.Group {
   const group =
-    kind === "seaweed" ? seaweed(stage) : kind === "clam" ? clam(stage) : kind === "fish" ? fish(stage) : kind === "meat" ? meat(stage) : bun();
+    kind === "seaweed"
+      ? seaweed(stage)
+      : kind === "clam"
+        ? clam(stage)
+        : kind === "fish"
+          ? fish(stage)
+          : kind === "meat"
+            ? meat(stage)
+            : kind === "pumpkin"
+              ? pumpkin(stage)
+              : kind === "mushroom"
+                ? mushroom(stage)
+                : bun();
   return shadowed(group);
 }
 
@@ -143,6 +216,13 @@ export function createBurger(parts: DishPart[]): THREE.Group {
   if (has("lettuce")) {
     for (let i = 0; i < 5; i++) group.add(turn(mesh(rounded(0.13, 0.015, 0.09, 0.006), mat(0x7ccf4f, 0.6), Math.cos(i * 1.25) * 0.05, y + 0.008, Math.sin(i * 1.25) * 0.05), 0.1, i * 1.25, 0.1));
     y += 0.02;
+  }
+  if (has("mushroom")) {
+    const slices = mushroom("cooked");
+    slices.scale.set(1.05, 1.4, 1.05);
+    slices.position.y = y;
+    group.add(slices);
+    y += 0.04;
   }
   if (has("meat")) {
     const patty = new THREE.Group();

@@ -3,7 +3,7 @@ import { LEVELS, levelNumber, nextLevel, themeLevels, THEMES, type Level, type T
 import { onPortraits, portraitOf } from "./portraits";
 import { RECIPES, ROUND_SECONDS, TARGET_SCALE, type GameState, type RecipeId } from "../shared/sim";
 
-export type IconName = "lettuce" | "tomato" | "onion" | "soup" | "arrow" | "chicken" | "grill" | "roast" | "seaweed" | "clam" | "fish" | "bun" | "meat";
+export type IconName = "lettuce" | "tomato" | "onion" | "soup" | "arrow" | "chicken" | "grill" | "roast" | "seaweed" | "clam" | "fish" | "bun" | "meat" | "pumpkin" | "mushroom";
 
 export const ICONS: Record<IconName, string> = {
   lettuce: `<svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="12" fill="#7ccf4f"/><path d="M16 7v18M9.5 12c2.2 2 4.3 3 6.5 3m6.500-3c-2.200 2-4.300 3-6.500 3M9 20c2.600.9 4.800.9 7 0m7 0c-2.600.9-4.800.9-7 0" fill="none" stroke="#4c9a2f" stroke-width="2" stroke-linecap="round"/></svg>`,
@@ -18,6 +18,8 @@ export const ICONS: Record<IconName, string> = {
   fish: `<svg viewBox="0 0 32 32" aria-hidden="true"><ellipse cx="14" cy="16" rx="10" ry="6.500" fill="#7fa8c9"/><path d="M4 17c4 3 13 3 18 0" fill="none" stroke="#dfe9f2" stroke-width="2.500" stroke-linecap="round"/><path d="M23 16l7-6v12z" fill="#5f8aa8"/><circle cx="9" cy="14" r="1.800" fill="#1c1c28"/></svg>`,
   bun: `<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M4 19a12 10 0 0 1 24 0z" fill="#d9913a"/><rect x="4" y="20" width="24" height="6" rx="2.500" fill="#e8b066"/><g fill="#fff3d6"><ellipse cx="11" cy="13" rx="1.800" ry="1"/><ellipse cx="17" cy="11" rx="1.800" ry="1"/><ellipse cx="22" cy="15" rx="1.800" ry="1"/></g></svg>`,
   meat: `<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M6 13c3-6 16-7 21-1 3 5 0 12-7 13-8 1-17-4-14-12z" fill="#c9433a"/><path d="M8 12c5-5 14-5 18 0" fill="none" stroke="#fff0e6" stroke-width="3" stroke-linecap="round"/></svg>`,
+  pumpkin: `<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 9c-7-1-12 4-12 10s5 10 12 10 12-4 12-10-5-11-12-10z" fill="#f08a24"/><path d="M16 9c-3 3-4 16 0 20m0-20c3 3 4 16 0 20M9 11c-3 4-3 13 1 17m13-17c3 4 3 13-1 17" fill="none" stroke="#c45f12" stroke-width="1.700" stroke-linecap="round"/><path d="M16 10c0-3 1-5 3-6" fill="none" stroke="#5c8a2e" stroke-width="2.600" stroke-linecap="round"/></svg>`,
+  mushroom: `<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M12 17h8l1 10a2 2 0 0 1-2 2h-6a2 2 0 0 1-2-2z" fill="#f3e6cf"/><path d="M3 18C3 9 9 4 16 4s13 5 13 14z" fill="#9b5cd6"/><g fill="#f6eaff"><circle cx="10" cy="12" r="2.200"/><circle cx="18" cy="9" r="2"/><circle cx="23" cy="14" r="1.800"/></g></svg>`,
   arrow: `<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 16h16m-6-6 6 6-6 6" fill="none" stroke="#8a8198" stroke-width="3.500" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
 };
 
@@ -33,6 +35,8 @@ export const RECIPE_ICONS: Record<RecipeId, IconName[]> = {
   clam_chowder: ["clam", "clam", "clam", "arrow", "soup"],
   grilled_fish: ["fish", "arrow", "grill"],
   burger: ["bun", "meat", "lettuce", "tomato"],
+  pumpkin_soup: ["pumpkin", "pumpkin", "pumpkin", "arrow", "soup"],
+  mushroom_burger: ["bun", "mushroom", "lettuce"],
 };
 
 // The four seats, in the order players fill them: each has its own character and ring colour.
@@ -48,6 +52,7 @@ const THEME_ART: Record<string, string> = {
   town: `<svg viewBox="0 0 160 72" aria-hidden="true"><rect width="160" height="72" fill="#bfe6f2"/><circle cx="134" cy="14" r="8" fill="#ffe27a"/><rect x="6" y="18" width="34" height="34" fill="#f2c96b"/><rect x="40" y="10" width="30" height="42" fill="#7fb7c9"/><rect x="70" y="20" width="40" height="32" fill="#f4dcc0"/><rect x="110" y="14" width="30" height="38" fill="#c9b3dc"/><g fill="#fff8ea"><rect x="12" y="24" width="8" height="8"/><rect x="26" y="24" width="8" height="8"/><rect x="46" y="16" width="7" height="8"/><rect x="58" y="16" width="7" height="8"/><rect x="46" y="29" width="7" height="8"/><rect x="58" y="29" width="7" height="8"/><rect x="116" y="20" width="7" height="8"/><rect x="128" y="20" width="7" height="8"/></g><path d="M6 38h34v6H6z" fill="#e4573d"/><path d="M70 36h40v6H70z" fill="#f29bb5"/><path d="M110 38h30v6h-30z" fill="#8b689c"/><path d="M40 40h30v6H40z" fill="#2f7f86"/><rect y="52" width="160" height="6" fill="#d6cdbb"/><rect y="58" width="160" height="14" fill="#4d505c"/><path d="M4 65h14m10 0h14m10 0h14m10 0h14m10 0h14m10 0h14" stroke="#f2cf63" stroke-width="2"/><rect x="146" y="40" width="3" height="12" fill="#8a5a3c"/><circle cx="147" cy="36" r="9" fill="#5fae4e"/><rect x="84" y="59" width="24" height="8" rx="3" fill="#f2c230"/><rect x="89" y="55" width="13" height="6" rx="2" fill="#f2c230"/><circle cx="89" cy="68" r="3" fill="#2a2c33"/><circle cx="103" cy="68" r="3" fill="#2a2c33"/></svg>`,
   sea: `<svg viewBox="0 0 160 72" aria-hidden="true"><defs><linearGradient id="sea-art" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2aa3c4"/><stop offset="1" stop-color="#0e5672"/></linearGradient></defs><rect width="160" height="72" fill="url(#sea-art)"/><path d="M20 0l14 50M70 0l8 46M118 0l-10 52" stroke="#ffffff" stroke-opacity=".12" stroke-width="7"/><path d="M0 58c26-6 52 4 80 0s54-6 80-1v15H0z" fill="#e6d3a0"/><path d="M20 60c-2-10 3-14 0-24m6 24c2-12-4-16 1-28" stroke="#3f9d57" stroke-width="4" fill="none" stroke-linecap="round"/><path d="M132 60V44m0 6l-8-8m8 4l8-9" stroke="#f27aa0" stroke-width="4" stroke-linecap="round" fill="none"/><circle cx="110" cy="58" r="8" fill="#b58ae0"/><path d="M52 60l3-7 3 7-7-4h8z" fill="#f0803a"/><g><ellipse cx="62" cy="26" rx="11" ry="7" fill="#ff8a3d"/><path d="M51 26l-9-6v12z" fill="#fff"/><rect x="60" y="19" width="4" height="14" fill="#fff"/><circle cx="68" cy="24" r="1.800" fill="#1c1c28"/></g><g><ellipse cx="104" cy="36" rx="8" ry="5" fill="#ffd166"/><path d="M112 36l7-5v10z" fill="#2f7f86"/><circle cx="100" cy="35" r="1.400" fill="#1c1c28"/></g><g fill="#cdf3ff" fill-opacity=".7"><circle cx="36" cy="30" r="3"/><circle cx="40" cy="18" r="2"/><circle cx="34" cy="10" r="1.500"/><circle cx="142" cy="24" r="2.500"/><circle cx="146" cy="12" r="1.500"/></g><path d="M84 12c0-6 14-6 14 0z" fill="#f7a8d8"/><path d="M87 12v8m4-8v10m4-10v7" stroke="#f7a8d8" stroke-width="1.500"/></svg>`,
   space: `<svg viewBox="0 0 160 72" aria-hidden="true"><rect width="160" height="72" fill="#141a33"/><g fill="#fff"><circle cx="0" cy="0" r="1.4" opacity="0.50"/><circle cx="53" cy="29" r="0.8" opacity="0.75"/><circle cx="106" cy="58" r="0.8" opacity="1.00"/><circle cx="159" cy="15" r="0.8" opacity="0.50"/><circle cx="52" cy="44" r="1.4" opacity="0.75"/><circle cx="105" cy="1" r="0.8" opacity="1.00"/><circle cx="158" cy="30" r="0.8" opacity="0.50"/><circle cx="51" cy="59" r="0.8" opacity="0.75"/><circle cx="104" cy="16" r="1.4" opacity="1.00"/><circle cx="157" cy="45" r="0.8" opacity="0.50"/><circle cx="50" cy="2" r="0.8" opacity="0.75"/><circle cx="103" cy="31" r="0.8" opacity="1.00"/><circle cx="156" cy="60" r="1.4" opacity="0.50"/><circle cx="49" cy="17" r="0.8" opacity="0.75"/><circle cx="102" cy="46" r="0.8" opacity="1.00"/><circle cx="155" cy="3" r="0.8" opacity="0.50"/><circle cx="48" cy="32" r="1.4" opacity="0.75"/><circle cx="101" cy="61" r="0.8" opacity="1.00"/><circle cx="154" cy="18" r="0.8" opacity="0.50"/><circle cx="47" cy="47" r="0.8" opacity="0.75"/><circle cx="100" cy="4" r="1.4" opacity="1.00"/><circle cx="153" cy="33" r="0.8" opacity="0.50"/><circle cx="46" cy="62" r="0.8" opacity="0.75"/><circle cx="99" cy="19" r="0.8" opacity="1.00"/><circle cx="152" cy="48" r="1.4" opacity="0.50"/><circle cx="45" cy="5" r="0.8" opacity="0.75"/></g><circle cx="30" cy="84" r="44" fill="#3d8fe4"/><path d="M-4 62c14-6 26 2 38-2s22-10 34-4" fill="none" stroke="#7ccf4f" stroke-width="7" stroke-linecap="round" opacity=".8"/><circle cx="136" cy="14" r="6" fill="#d9dce4"/><circle cx="134" cy="12" r="1.600" fill="#b9bcc6"/><rect x="66" y="24" width="72" height="26" rx="13" fill="#d9e2ee" stroke="#241d30" stroke-width="2"/><rect x="52" y="32" width="14" height="10" fill="#8a93a6" stroke="#241d30" stroke-width="2"/><path d="M34 28h18v26H34z" fill="#3d8fe4" stroke="#241d30" stroke-width="2"/><path d="M40 28v26M46 28v26" stroke="#a9dcff" stroke-width="1.500"/><g fill="#ffd166" stroke="#241d30" stroke-width="1.600"><circle cx="80" cy="37" r="5"/><circle cx="96" cy="37" r="5"/><circle cx="112" cy="37" r="5"/><circle cx="128" cy="37" r="5"/></g><path d="M78 50h52" stroke="#7a5cff" stroke-width="3" stroke-linecap="round"/><g transform="translate(124 60) rotate(-30)"><path d="M0-12c5 4 6 12 4 18H-4c-2-6-1-14 4-18z" fill="#fff" stroke="#241d30" stroke-width="1.600"/><circle cy="-3" r="2.500" fill="#3d8fe4"/><path d="M-4 3l-4 5 4-1zM4 3l4 5-4-1z" fill="#d2411f"/><path d="M-2 6c0 5 2 7 2 9 0-2 2-4 2-9z" fill="#ffb03a"/></g></svg>`,
+  magic: `<svg viewBox="0 0 160 72" aria-hidden="true"><rect width="160" height="72" fill="#1d1836"/><g fill="#fff"><circle cx="14" cy="10" r="1"/><circle cx="40" cy="20" r="0.8"/><circle cx="70" cy="8" r="1.1"/><circle cx="104" cy="16" r="0.8"/><circle cx="150" cy="24" r="1"/></g><path d="M132 8a10 10 0 1 0 8 16 8 8 0 1 1-8-16z" fill="#ffd166"/><path d="M28 72V30l8-10 8 10v8h12V22l10-14 10 14v16h12V30l8-10 8 10v42z" fill="#55566b"/><path d="M60 52a6 8 0 0 1 12 0v10H60z" fill="#ffcf6b"/><path d="M90 50a5 7 0 0 1 10 0v8H90zM38 46a4 6 0 0 1 8 0v8h-8z" fill="#8a5cf0"/><path d="M118 72V44l6-6 6 6v28z" fill="#3e3f52"/><path d="M0 64c30-4 50 4 80 0s50-6 80-2v10H0z" fill="#3fe0b0" opacity=".85"/><path d="M10 66h14M50 68h18M100 66h20M136 68h12" stroke="#c9fff0" stroke-width="1.6" stroke-linecap="round"/></svg>`,
 };
 
 // Colours of the little floor plan on each kitchen card.
@@ -69,6 +74,7 @@ const PLAN_COLOURS: Record<Tile["kind"], string> = {
   grill: "#c9552a",
   belt: "#25212b",
   warp: "#7a5cff",
+  chasm: "#3fe0b0",
 };
 const CRATE_COLOURS = {
   tomato: "#e23b2e",
@@ -80,6 +86,8 @@ const CRATE_COLOURS = {
   fish: "#7fa8c9",
   bun: "#d9913a",
   meat: "#c9433a",
+  pumpkin: "#f08a24",
+  mushroom: "#9b5cd6",
 };
 
 // Draws a kitchen's tiles as a small top-down plan.
@@ -103,6 +111,8 @@ const TAG_STYLES: Record<string, string> = {
   Conveyor: "belt",
   Teleport: "warp",
   "Zero gravity": "warp",
+  Throwing: "fire",
+  "Magic doors": "warp",
 };
 
 // What sets a kitchen apart, as short tags.
@@ -112,7 +122,8 @@ function levelTags(level: Level): string[] {
   if (level.fire) tags.push("Fire");
   if (level.tiles.some((tile) => tile.kind === "grill")) tags.push("Grill");
   if (level.tiles.some((tile) => tile.kind === "belt")) tags.push("Conveyor");
-  if (level.tiles.some((tile) => tile.kind === "warp")) tags.push("Teleport");
+  if (level.tiles.some((tile) => tile.kind === "chasm")) tags.push("Throwing");
+  if (level.tiles.some((tile) => tile.kind === "warp")) tags.push(level.theme === "magic" ? "Magic doors" : "Teleport");
   if (level.lowGravity) tags.push("Zero gravity");
   return tags;
 }

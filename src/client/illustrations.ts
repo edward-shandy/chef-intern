@@ -18,7 +18,9 @@ export type Scene =
   | "combo"
   | "belt"
   | "warp"
-  | "float";
+  | "float"
+  | "throw"
+  | "door";
 
 const svg = (body: string) =>
   `<svg viewBox="0 0 200 140" aria-hidden="true"><rect width="200" height="140" fill="#fbe6cb"/><path d="M0 34h200M0 68h200" stroke="#f3d6b0" stroke-width="2"/>${body}</svg>`;
@@ -183,6 +185,36 @@ const SCENES: Record<Scene, () => string> = {
         <g class="ill-bob">${chef(100, SHIRTS[1], 0.8)}</g>
         <path d="M54 72h-24M58 86h-30M54 100h-20" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".7"/>
       </g>`),
+
+  // One chef throws a pumpkin in an arc over the glowing stream and the chef on the far side catches it.
+  throw: () =>
+    svg(`<rect width="200" height="140" fill="#2a2440"/>
+      <rect x="0" y="100" width="200" height="40" fill="#8f93a8"/>
+      <rect x="86" y="100" width="28" height="40" fill="#3fe0b0"/><path d="M86 100v40M114 100v40" stroke="${INK}" stroke-width="2.500"/>
+      <path class="ill-roll" d="M92 108q4 4 0 8t0 8M100 112q4 4 0 8t0 8M108 106q4 4 0 8t0 8" fill="none" stroke="#c9fff0" stroke-width="2" stroke-linecap="round" opacity=".8"/>
+      ${chef(42, SHIRTS[0], 0.75)}${chef(158, SHIRTS[1], 0.75)}
+      ${arm(54, 84, 66, 70, 0.8)}${arm(146, 84, 136, 74, 0.8)}
+      <g class="ill-throw-x"><g class="ill-throw-y">
+        <circle cx="70" cy="64" r="10" fill="#ef8424" stroke="${INK}" stroke-width="2"/><path d="M70 55v-5" stroke="#5c8a2e" stroke-width="3" stroke-linecap="round"/>
+        <path d="M54 66l-8-2M55 72l-9 1" stroke="#ffd166" stroke-width="2.500" stroke-linecap="round"/>
+      </g></g>
+      ${tag(100, 22, "F")}`),
+
+  // A chef walks into a magic door on one side of the stream and steps out of its twin on the other.
+  door: () =>
+    svg(`<rect width="200" height="140" fill="#2a2440"/>
+      <rect x="0" y="110" width="200" height="30" fill="#8f93a8"/>
+      <rect x="88" y="110" width="24" height="30" fill="#3fe0b0"/>
+      ${[42, 158]
+        .map(
+          (x) => `<path d="M${x - 26} 114V70a26 34 0 0 1 52 0v44z" fill="#b3b5c6" stroke="${INK}" stroke-width="2.500"/>
+      <path class="ill-spin" style="transform-origin:${x}px 84px" d="M${x - 17} 114V72a17 24 0 0 1 34 0v42z" fill="#9b7bff"/>
+      <path d="M${x} 66a12 12 0 1 0 0 24" fill="none" stroke="#e4ddff" stroke-width="3" stroke-linecap="round" opacity=".8"/>`,
+        )
+        .join("")}
+      <g class="ill-warp-out">${chef(42, SHIRTS[0], 0.62)}</g>
+      <g class="ill-warp-in">${chef(158, SHIRTS[0], 0.62)}</g>
+      <g class="ill-sparkle"><path d="M42 50l3 7 7 3-7 3-3 7-3-7-7-3 7-3zM158 50l3 7 7 3-7 3-3 7-3-7-7-3 7-3z" fill="#ffd166"/></g>`),
 
   // A plate rides the belt from one chef to the other while the chevrons roll.
   belt: () =>

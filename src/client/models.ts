@@ -16,6 +16,7 @@ import { createExtinguisher } from "./fire";
 import { CODE_FOOD, createBurger, createCrate, createFood, type Stage } from "./food";
 import { createCoralPot, createSea, createSeaCounter, SEA_SAND } from "./sea";
 import { createSpace, createSpaceCounter } from "./space";
+import { animatePortal, createMagic, createPortal, magicCounterParts } from "./magic";
 import { createStreet, streetGround } from "./street";
 
 export { animateStreet } from "./street";
@@ -175,10 +176,65 @@ function woodTexture(light: string, grain: string, planks: number, seed: number)
 
 // ---------------------------------------------------------------- room
 
+// The castle kitchen's floor: grey flagstones with a pale octagon on each and a dark diamond where four meet, like
+// an old great hall. The stream's tiles are left transparent so the water below shows through.
+function castleFloor(ctx: CanvasRenderingContext2D, level: Level, size: number): void {
+  for (let tx = 0; tx < level.width; tx++) {
+    for (let tz = 0; tz < level.height; tz++) {
+      const x = tx * size;
+      const z = tz * size;
+      if (level.tiles[tz * level.width + tx].kind === "chasm") continue;
+      const seed = tx * 31 + tz * 17;
+      const shade = 138 + noise(seed) * 18;
+      ctx.fillStyle = "#55566b";
+      ctx.fillRect(x, z, size, size);
+      ctx.fillStyle = `rgb(${shade - 4}, ${shade}, ${shade + 16})`;
+      const cut = size * 0.26;
+      ctx.beginPath();
+      ctx.moveTo(x + cut, z + 2);
+      ctx.lineTo(x + size - cut, z + 2);
+      ctx.lineTo(x + size - 2, z + cut);
+      ctx.lineTo(x + size - 2, z + size - cut);
+      ctx.lineTo(x + size - cut, z + size - 2);
+      ctx.lineTo(x + cut, z + size - 2);
+      ctx.lineTo(x + 2, z + size - cut);
+      ctx.lineTo(x + 2, z + cut);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.16)";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.fillStyle = `rgba(30, 20, 40, ${0.05 + noise(seed + 2) * 0.08})`;
+      ctx.fillRect(x + 10 + noise(seed + 4) * 30, z + 12 + noise(seed + 5) * 30, 10, 6);
+    }
+  }
+  // A small dark diamond where four flagstones meet.
+  ctx.fillStyle = "#5c5a78";
+  for (let tx = 0; tx <= level.width; tx++) {
+    for (let tz = 0; tz <= level.height; tz++) {
+      const x = tx * size;
+      const z = tz * size;
+      ctx.beginPath();
+      ctx.moveTo(x, z - size * 0.24);
+      ctx.lineTo(x + size * 0.24, z);
+      ctx.lineTo(x, z + size * 0.24);
+      ctx.lineTo(x - size * 0.24, z);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+  for (let tx = 0; tx < level.width; tx++) {
+    for (let tz = 0; tz < level.height; tz++) {
+      if (level.tiles[tz * level.width + tx].kind === "chasm") ctx.clearRect(tx * size, tz * size, size, size);
+    }
+  }
+}
+
 // One texture for the whole floor, so every tile can carry its own tint and wear.
 function floorTexture(level: Level, anisotropy: number): THREE.CanvasTexture {
   const size = 64;
   const texture = canvasTexture(level.width * size, level.height * size, (ctx) => {
+    if (level.theme === "magic") return castleFloor(ctx, level, size);
     for (let tx = 0; tx < level.width; tx++) {
       for (let tz = 0; tz < level.height; tz++) {
         const x = tx * size;
@@ -282,7 +338,8 @@ export function createRoom(level: Level, anisotropy: number): THREE.Group {
 
   const floor = mesh(
     new THREE.PlaneGeometry(width, height),
-    new THREE.MeshStandardMaterial({ map: floorMap, roughness: 0.64 }),
+    // alphaTest lets the castle's stream show through the holes left in its floor.
+    new THREE.MeshStandardMaterial({ map: floorMap, roughness: 0.64, alphaTest: level.theme === "magic" ? 0.5 : 0 }),
     width / 2,
     0,
     height / 2,
@@ -307,7 +364,12 @@ export function createRoom(level: Level, anisotropy: number): THREE.Group {
   floor.receiveShadow = deck.receiveShadow = true;
   // In orbit there is no ground beyond the deck, only space; the station's own slab is built by createSpace.
   room.add(floor);
-  if (!plan?.space) room.add(deck);
+  const magic = level.theme === "magic" ? createMagic(level) : null;
+  if (magic) {
+    room.add(magic.group);
+    room.userData.magic = magic.view;
+  }
+  if (!plan?.space && !magic) room.add(deck);
   if (plan?.space) {
     const space = createSpace(level);
     room.add(space.group);
@@ -429,7 +491,7 @@ export function createRoom(level: Level, anisotropy: number): THREE.Group {
         room.add(glow);
       }
     }
-  } else if (!sea) {
+  } else if (!sea && !magic) {
     // Without a restaurant plan the back wall is a row of 2-tile KayKit panels, two with windows.
     const panels = Math.ceil(width / 2);
     for (let i = 0; i < panels; i++) {
@@ -451,7 +513,8 @@ export function createRoom(level: Level, anisotropy: number): THREE.Group {
     roughness: 0.5,
     side: THREE.DoubleSide,
   });
-  for (const fraction of [0.14, 0.5, 0.86]) {
+  // The castle is lit by its candles and fires instead.
+  for (const fraction of magic ? [] : [0.14, 0.5, 0.86]) {
     const x = width * fraction;
     solid.add(
       mesh(cylinder(0.012, 0.012, 0.7, 6), mat(COLORS.darkSteel, 0.5), x, 2.4, 0.5),
@@ -610,6 +673,15 @@ export function createItem(item: Item): THREE.Group {
     } else {
       parts.add(part("plate"));
       if (item.contents.includes("onion_soup") || item.contents.includes("clam_soup")) parts.add(part("stew_bowl", 0, -0.04, 0));
+      if (item.contents.includes("pumpkin_soup")) {
+        // A deep bowl of bright orange soup with a swirl of cream and two toasted seeds.
+        group.add(
+          mesh(cylinder(0.15, 0.1, 0.09, 20), mat(0x4a3a6a, 0.45), 0, 0.065, 0),
+          mesh(cylinder(0.135, 0.135, 0.01, 20), mat(0xf08a24, 0.4), 0, 0.105, 0),
+          mesh(new THREE.TorusGeometry(0.04, 0.008, 5, 16), mat(0xfff3e0, 0.4), 0, 0.112, 0),
+        );
+        group.children[group.children.length - 1].rotation.x = Math.PI / 2;
+      }
       // A burger is built in code; its lettuce and tomato go inside the bun rather than loose on the plate.
       const burger = item.contents.includes("bun") || item.contents.includes("meat");
       const hasLettuce = !burger && item.contents.includes("lettuce");
@@ -625,6 +697,7 @@ export function createItem(item: Item): THREE.Group {
       if (burger) group.add(createBurger(item.contents));
       if (item.contents.includes("seaweed")) group.add(put(createFood("seaweed", "chopped"), -0.05, 0.03, 0));
       if (item.contents.includes("fish")) group.add(put(createFood("fish", "cooked"), 0, 0.03, 0));
+      if (!burger && item.contents.includes("mushroom")) group.add(put(createFood("mushroom", "cooked"), 0.04, 0.03, -0.02));
       if (item.contents.includes("roast_chicken")) {
         // Served on its own the chicken sits in the middle; in a salad it shares the plate with the leaves.
         const chicken = createChicken("roast");
@@ -845,9 +918,16 @@ export function createStations(level: Level): Stations {
   const flameMaterial = new THREE.MeshBasicMaterial({ color: COLORS.flame });
 
   level.tiles.forEach((tile, index) => {
-    if (tile.kind === "floor") return;
+    // The stream is drawn with the castle hall (magic.ts); nothing stands on it.
+    if (tile.kind === "floor" || tile.kind === "chasm") return;
     if (tile.kind === "warp") {
-      pads.push(createPad(tile.pair ?? 1, (index % level.width) + 0.5, Math.floor(index / level.width) + 0.5));
+      // In the castle a teleport pad is a magic door.
+      const colour = PAD_COLOURS[((tile.pair ?? 1) - 1) % PAD_COLOURS.length];
+      pads.push(
+        level.theme === "magic"
+          ? createPortal(level, index, colour)
+          : createPad(tile.pair ?? 1, (index % level.width) + 0.5, Math.floor(index / level.width) + 0.5),
+      );
       unshadowed.add(pads.at(-1)!);
       return;
     }
@@ -1032,11 +1112,13 @@ export function createStations(level: Level): Stations {
   const up = new THREE.Vector3(0, 1, 0);
   const sea = level.theme === "sea";
   const space = level.theme === "space";
-  const size = sea || space ? new THREE.Vector3(1, 1, 1) : new THREE.Vector3(MODEL_SCALE, MODEL_SCALE, MODEL_SCALE);
+  const castle = level.theme === "magic" ? magicCounterParts() : null;
+  const size = sea || space || castle ? new THREE.Vector3(1, 1, 1) : new THREE.Vector3(MODEL_SCALE, MODEL_SCALE, MODEL_SCALE);
   const parts =
-    sea || space
+    castle ??
+    (sea || space
       ? ((sea ? createSeaCounter() : createSpaceCounter()).children as THREE.Mesh[]).map((part) => [part.geometry, part.material as THREE.Material] as const)
-      : [[modelGeometry("kitchencounter_straight_A"), modelMaterial()] as const];
+      : [[modelGeometry("kitchencounter_straight_A"), modelMaterial()] as const]);
   for (const [geometry, material] of parts) {
     const instanced = new THREE.InstancedMesh(geometry, material, counters.length);
     counters.forEach(({ x, z, turn }, i) => {
@@ -1084,6 +1166,7 @@ function createPad(pair: number, x: number, z: number): THREE.Group {
 // Pads pulse gently, and their rings rise and fade like a beam waiting for someone to step in.
 export function animatePads(stations: Stations, time: number): void {
   stations.pads.forEach((pad, i) => {
+    if (pad.userData.swirl) return animatePortal(pad, time, i);
     const { ring, glow } = pad.userData as { ring: THREE.Mesh<THREE.TorusGeometry, THREE.MeshBasicMaterial>; glow: THREE.MeshBasicMaterial };
     const phase = (time * 0.8 + i * 0.37) % 1;
     ring.position.y = 0.06 + phase * 0.9;

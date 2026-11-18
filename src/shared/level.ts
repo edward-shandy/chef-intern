@@ -18,6 +18,8 @@ export type TileKind =
   | "belt"
   // Teleport pad: a floor tile that sends a chef who steps on it to the other pad with the same number.
   | "warp"
+  // A gap in the floor (the wizard castle's magic stream): nobody can walk or reach across it, but thrown food flies over.
+  | "chasm"
   // Wall bracket where the fire extinguisher starts each round, and the only station that can hold it besides a counter.
   | "extinguisher"
   // Fixtures that fill a cabinet slot but cannot be used: a sink, a fridge, or a counter with a pot plant on it.
@@ -117,6 +119,9 @@ const LEGEND: Record<string, Tile> = {
   H: { kind: "crate", dispenses: "fish" },
   U: { kind: "crate", dispenses: "bun" },
   M: { kind: "crate", dispenses: "meat" },
+  p: { kind: "crate", dispenses: "pumpkin" },
+  m: { kind: "crate", dispenses: "mushroom" },
+  "~": { kind: "chasm" },
   G: { kind: "grill" },
   "^": { kind: "belt", dir: [0, -1] },
   v: { kind: "belt", dir: [0, 1] },
@@ -179,6 +184,9 @@ export function warpDestination(level: Level, index: number): number | null {
 
 // Fixtures block the way like any counter but are never a target for the chef's hands.
 export const isFixture = (tile: Tile): boolean => tile.kind === "sink" || tile.kind === "fridge" || tile.kind === "plant";
+
+// Tiles a chef can neither stand on nor use: fixtures, and the chasm, which thrown food flies straight over.
+export const outOfHand = (tile: Tile): boolean => isFixture(tile) || tile.kind === "chasm";
 
 // Only these tiles can have an item resting on them.
 export const holdsItems = (tile: Tile): boolean =>
@@ -253,6 +261,14 @@ const SPACE_DECOR: Decor = {
       { model: "space_holo_menu", x: 17.0, z: 10.5 },
     ],
   },
+};
+
+// The wizard castle around the magic kitchens: a vaulted stone hall with stained-glass windows, bookcases, banners,
+// candles floating overhead and long feast tables (see scripts/blender/make_magic_props.py and src/client/magic.ts).
+const MAGIC_DECOR: Decor = {
+  sink: "sink_farmhouse",
+  fridge: "fridge_retro",
+  plants: ["magic_herbs"],
 };
 
 // Clearing one kitchen unlocks the next; they must all share one size, which the camera is framed for.
@@ -655,6 +671,47 @@ export const LEVELS: Level[] = [
     ],
     { theme: "space", plates: 4, difficulty: 4, lowGravity: true },
   ),
+  // Wizard's Keep opens with the castle kitchen cut in two by a glowing stream: the pantry and chopping boards on the
+  // left, the cauldrons, plates and the pass on the right. Food can be thrown across onto the island counters (or
+  // straight into a pot); people cannot, so a chef on their own walks round through the pair of magic doors.
+  parseLevel(
+    "Spellbound Scullery",
+    300,
+    ["salad", "pumpkin_soup", "lettuce_salad"],
+    MAGIC_DECOR,
+    [
+      "V#pLT#~#O#O#V",
+      "#1..S.~.S...#",
+      "B.....~.....P",
+      "B..#..~..#..#",
+      "#..#..~..#..W",
+      "#.....~.....W",
+      "#.....~.....#",
+      "#..S..~.S..1#",
+      "V##X##~##X##V",
+    ],
+    { theme: "magic", difficulty: 2 },
+  ),
+  // Three halls between two streams. The pantry (left) throws to the hearth hall (middle), whose cauldrons, grills
+  // and plate stack feed the pass and the wash-up on the right. Plates cannot be thrown, so they go through the doors.
+  parseLevel(
+    "Hall of Cauldrons",
+    340,
+    ["pumpkin_soup", "mushroom_burger", "salad"],
+    MAGIC_DECOR,
+    [
+      "VpmU~OPG~#W#V",
+      "#S..~.S.~..S#",
+      "B..1~...~...W",
+      "B...~.1.~.2.#",
+      "L...~.#.~...Q",
+      "T...~.2.~...R",
+      "#...~...~...#",
+      "#S..~...~...#",
+      "V#X#~O#G~#X#V",
+    ],
+    { theme: "magic", plates: 4, difficulty: 4 },
+  ),
 ];
 
 // Kitchens are grouped into themes; each theme is played through on its own, starting from its first kitchen.
@@ -668,6 +725,7 @@ export const THEMES: Theme[] = [
   { id: "town", name: "Town Bistro", blurb: "A restaurant on a busy street" },
   { id: "sea", name: "Deep Sea Diner", blurb: "A kitchen on the sea floor" },
   { id: "space", name: "Orbit Diner", blurb: "A diner on a space station above a blue planet" },
+  { id: "magic", name: "Wizard's Keep", blurb: "A castle kitchen split by a magic stream" },
 ];
 
 // Indices into LEVELS of one theme's kitchens, in play order.

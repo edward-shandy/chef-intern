@@ -90,6 +90,8 @@ export interface Polish {
   // Drops the most expensive effect still on (ambient occlusion, then anti-aliasing); false when nothing is left to drop.
   degrade(): boolean;
   setEnabled(on: boolean): void;
+  // How strong the glow is and how bright something must be to glow; each theme picks its own.
+  setBloom(strength: number, threshold: number): void;
   setSize(width: number, height: number): void;
   render(): void;
 }
@@ -150,6 +152,10 @@ export function createPolish(renderer: THREE.WebGLRenderer, scene: THREE.Scene, 
     },
     setEnabled(on) {
       enabled = on;
+    },
+    setBloom(strength, threshold) {
+      bloom.strength = strength;
+      bloom.threshold = threshold;
     },
     setSize(width, height) {
       composer.setPixelRatio(renderer.getPixelRatio());
